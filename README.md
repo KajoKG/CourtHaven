@@ -25,7 +25,7 @@
 
 - Link to Assignment 1: [**Assignment 1**](https://github.com/KajoKG/CourtHaven/blob/main/assignments/assignment%201.mp4)
 - Link to Assignment 2: [**Assignment 2**](https://github.com/KajoKG/CourtHaven/tree/main/assignments/assignment2)
-- Link to Assignment 3: [**Assignment 2**](https://github.com/KajoKG/CourtHaven/tree/main/assignments/assignment3)
+- Link to Assignment 3: [**Assignment 3**](https://github.com/KajoKG/CourtHaven/tree/main/assignments/assignment3.md)
 
 
 ## Project Requirements
