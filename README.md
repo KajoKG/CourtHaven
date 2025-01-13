@@ -28,6 +28,8 @@
 - Link to Assignment 3: [**Assignment 3**](https://github.com/KajoKG/CourtHaven/tree/main/assignments/assignment3.md)
 - Link to Assignment 4: [**Assignment 4**](https://github.com/KajoKG/CourtHaven/tree/main/assignments/assignment4.PNG)
 - Link to Assignment 5: [**Assignment 5**](https://github.com/KajoKG/CourtHaven/tree/main/assignments/assignment5.md)
+- Link to Assignment 6: [**Assignment 6**](https://github.com/KajoKG/CourtHaven/tree/main/assignments/assignment6.md)
+
 
 
 
