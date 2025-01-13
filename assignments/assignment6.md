@@ -1,4 +1,4 @@
-[**Assignment 6 link**](https://vercel-deploy-sable-nu.vercel.app)
+[**Assignment 6 link to website**](https://vercel-deploy-sable-nu.vercel.app)
 
 Png of desktop scrolled up/down:
 ![Desktop_scrolled_up](https://github.com/user-attachments/assets/a1e3aa86-9d6f-49d2-b81f-83a0b29b8e5e)
