@@ -1,3 +1,5 @@
+import Link from "next/link";
+import AuthGate from "../components/AuthGate";
 import BookContent from "../components/bookContent";
 
 export default function HomePage() {
@@ -22,13 +24,30 @@ export default function HomePage() {
         <h1 className="text-4xl md:text-9xl font-bold text-green-700">
           Court<span className="text-green-500">Haven</span>
         </h1>
-        <p className="text-lg md:text-3xl text-gray-700 mt-4">
-          The Court Awaits
-        </p>
+        <p className="text-lg md:text-3xl text-gray-700 mt-4">The Court Awaits</p>
+
         <div className="mt-8">
-          <BookContent />
+          <AuthGate
+            // NEMA redirecta; samo zamijeni formu porukom
+            fallback={
+              <div className="max-w-xl mx-auto bg-white rounded-2xl shadow p-6 text-center">
+                <p className="text-sm text-gray-700">
+                  You must be{" "}
+                  <Link href="/login" className="font-semibold underline text-green-700">
+                    logged in
+                  </Link>{" "}
+                  to continue.
+                </p>
+              </div>
+            }
+          >
+            {/* Ako je user logiran, prikaži formu */}
+            <BookContent />
+          </AuthGate>
         </div>
       </section>
+
+      {/* tvoje info kartice (Why / Featured / Explore) ostaju kakve jesu */}
     </main>
   );
 }
