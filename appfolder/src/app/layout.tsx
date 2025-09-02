@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { Navigation } from "@/components/navigation";
 
-// Definiranje fontova pomoću `next/font/local`
+// Fonts
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
@@ -15,13 +15,21 @@ const geistMono = localFont({
   weight: "100 900",
 });
 
-// Meta podaci za stranicu
+// Metadata
 export const metadata: Metadata = {
   title: {
     template: "%s | CourtHaven",
-    default: "CourtHaven", // Default naslov
+    default: "CourtHaven",
   },
   description: "Your ultimate court-booking experience.",
+};
+
+// Viewport theme color (umjesto metadata.themeColor)
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 export default function RootLayout({
@@ -30,18 +38,40 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Pre-hydration theme boot: čita localStorage i/ili OS postavku */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+(function () {
+  try {
+    var ls = localStorage.getItem('theme');
+    var m = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (ls === 'dark' || (!ls && m)) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  } catch (_) {}
+})();
+            `,
+          }}
+        />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        {/* Navigacija - uvijek prisutna na svim stranicama */}
+        {/* Navigacija */}
         <Navigation />
-        {/* Dinamičan sadržaj stranica */}
+
+        {/* Sadržaj */}
         <main className="min-h-screen">{children}</main>
-        {/* Footer */}
-        <footer className="bg-gray-900 text-white py-6">
+
+{/* Footer – koristi surface varijable (app-surface) i border iz globals.css */}
+<footer className="app-surface py-3">
   <div className="flex justify-between items-center px-6">
-    {/* Tekst u lijevom uglu */}
+    {/* Lijevi linkovi */}
     <div className="text-sm">
       <a href="#" className="hover:underline mr-4 hidden md:inline">
         Terms & Conditions
@@ -53,7 +83,7 @@ export default function RootLayout({
         Contact Us
       </a>
 
-      {/* Skraćeni tekst za mobilne uređaje */}
+      {/* Skraćeno na mobitelu */}
       <a href="#" className="hover:underline mr-4 md:hidden">
         Conditions
       </a>
@@ -63,18 +93,6 @@ export default function RootLayout({
       <a href="#" className="hover:underline md:hidden">
         Contact
       </a>
-    </div>
-
-    {/* Ikone na većim ekranima, tekst na manjim */}
-    <div className="md:flex space-x-4 hidden">
-      <img src="/icons/insta.png" alt="Instagram" className="w-8 h-8 md:w-12 md:h-12" />
-      <img src="/icons/meta.png" alt="Meta" className="w-8 h-8 md:w-12 md:h-12" />
-      <img src="/icons/x.png" alt="X" className="w-8 h-8 md:w-12 md:h-12" />
-    </div>
-
-    {/* Tekst za mobilne uređaje */}
-    <div className="md:hidden text-sm text-center">
-      Follow us!
     </div>
   </div>
 </footer>

@@ -10,7 +10,6 @@ type Court = {
   city: string;
   description: string | null;
   image_url: string | null;
-  // pricing fields from /api/courts/search
   price_per_hour?: number | null;
   effective_price_per_hour?: number | null;
   active_offer?: {
@@ -26,10 +25,7 @@ type Court = {
   } | null;
 };
 
-type SearchResult = {
-  available: Court[];
-  conflicting: Court[];
-};
+type SearchResult = { available: Court[]; conflicting: Court[] };
 
 function todayISO() {
   const d = new Date();
@@ -43,12 +39,20 @@ function in14DaysISO() {
   return d.toISOString().split("T")[0];
 }
 
+/* normalize helper (za city filter) */
+function norm(s: string | null | undefined) {
+  return (s || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 export default function SearchBar() {
-  const [sport, setSport] = useState("");        // canonical: lowercase values
-  const [city, setCity] = useState("");          // NEW
+  const [sport, setSport] = useState("");
+  const [city, setCity] = useState("");
   const [date, setDate] = useState("");
   const [hour, setHour] = useState("");
-  const [duration, setDuration] = useState("1");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SearchResult | null>(null);
@@ -63,18 +67,29 @@ export default function SearchBar() {
     setError(null);
     try {
       const qs = new URLSearchParams();
-      if (sport) qs.set("sport", sport);     // 👈 no toLowerCase; values already canonical
+      if (sport) qs.set("sport", sport);
       if (city) qs.set("city", city);
       if (date) qs.set("date", date);
       if (hour) qs.set("hour", hour);
-      if (date && hour) qs.set("duration", duration);
 
       const res = await fetch(`/api/courts/search?${qs.toString()}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Search failed");
-      setData(json);
-    } catch (err: any) {
-      setError(err.message ?? "Search error");
+      const json = (await res.json()) as SearchResult | { error?: string };
+      if (!res.ok) throw new Error((json as any).error || "Search failed");
+
+      let result = json as SearchResult;
+
+      const want = norm(city);
+      if (want) {
+        const byCity = (c: Court) => norm(c.city) === want;
+        result = {
+          available: (result.available || []).filter(byCity),
+          conflicting: (result.conflicting || []).filter(byCity),
+        };
+      }
+
+      setData(result);
+    } catch (e: any) {
+      setError(e.message ?? "Search error");
       setData(null);
     } finally {
       setLoading(false);
@@ -87,97 +102,74 @@ export default function SearchBar() {
   };
 
   return (
-    <div className="bg-white shadow-md rounded-lg p-8 w-full">
+    <div className="rounded-lg p-6 md:p-8 w-full bg-white dark:bg-[color:var(--card)] shadow-md">
       {/* SEARCH FORM */}
       <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
-        <div className="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0">
+        <div className="flex flex-col md:flex-row md:space-x-4 space-y-3 md:space-y-0">
 
-          {/* Sport */}
+          {/* Sport – placeholder kao disabled opcija (ne može se odabrati) */}
           <div className="flex-1">
-            <label htmlFor="sport" className="font-bold text-lg mb-2 block text-black">
-              Select Sport
-            </label>
             <select
-              id="sport"
+              aria-label="Select sport"
               value={sport}
               onChange={(e) => setSport(e.target.value)}
-              className="p-3 border rounded-md w-full focus:ring-2 focus:ring-green-400 text-black"
               required
+              className="form-ctrl appearance-none p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="" disabled>Sport</option>
+              <option value="" disabled hidden>Sport</option>
               <option value="padel">Padel</option>
               <option value="tennis">Tennis</option>
               <option value="basketball">Basketball</option>
               <option value="football">Football</option>
-              <option value="badminton">Badminton</option>
             </select>
           </div>
 
-          {/* City (NEW) */}
+          {/* City */}
           <div className="flex-1">
-            <label htmlFor="city" className="font-bold text-lg mb-2 block text-black">
-              City
-            </label>
             <input
-              id="city"
+              aria-label="City"
               type="text"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              placeholder="e.g. Zagreb"
-              className="p-3 border rounded-md w-full focus:ring-2 focus:ring-green-400 text-black"
+              placeholder="City"
+              className="form-ctrl p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
 
-          {/* Date */}
-          <div className="flex-1">
-            <label htmlFor="date" className="font-bold text-lg mb-2 block text-black">
-              Select Date
-            </label>
-            <input
-              id="date"
-              type="date"
-              value={date}
-              min={minDate}
-              max={maxDate}
-              onChange={(e) => setDate(e.target.value)}
-              className="p-3 border rounded-md w-full focus:ring-2 focus:ring-green-400 text-black"
-            />
-          </div>
+          {/* Date (custom label jer date nema placeholder) */}
+<div className="flex-1 relative group">
+  {!date && (
+    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-white/70 group-focus-within:hidden">
+      Date
+    </span>
+  )}
+  <input
+    aria-label="Select date"
+    type="date"
+    value={date}
+    min={minDate}
+    max={maxDate}
+    onChange={(e) => setDate(e.target.value)}
+    className="form-ctrl p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+  />
+</div>
 
-          {/* Time */}
+
+          {/* Time – placeholder kao disabled opcija */}
           <div className="flex-1">
-            <label htmlFor="time" className="font-bold text-lg mb-2 block text-black">
-              Select Time
-            </label>
             <select
-              id="time"
+              aria-label="Select time"
               value={hour}
               onChange={(e) => setHour(e.target.value)}
-              className="p-3 border rounded-md w-full focus:ring-2 focus:ring-green-400 text-black"
+              className="form-ctrl appearance-none p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="">-- : --</option>
+              <option value="" disabled hidden>Time</option>
               {hours.map((h) => (
                 <option key={h} value={h}>
                   {String(h).padStart(2, "0")}:00
                 </option>
               ))}
             </select>
-
-            {/* Duration (samo kada imamo date+time) */}
-            {date && hour && (
-              <div className="mt-2">
-                <label className="text-sm">Duration</label>
-                <select
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  className="ml-2 p-2 border rounded-md"
-                >
-                  <option value="1">1h</option>
-                  <option value="2">2h</option>
-                  <option value="3">3h</option>
-                </select>
-              </div>
-            )}
           </div>
         </div>
 
@@ -191,27 +183,27 @@ export default function SearchBar() {
       </form>
 
       {/* ERROR */}
-      {error && <p className="text-red-600 mt-4">{error}</p>}
+      {error && <p className="text-red-600 dark:text-red-400 mt-4">{error}</p>}
 
       {/* RESULTS */}
       {data && (
         <div className="mt-6 space-y-6">
           {data.available.length > 0 ? (
             <section>
-              <h3 className="font-semibold text-green-700 mb-3">Available Courts</h3>
-              <Cards
-                courts={data.available}
-                onPick={setSelected}
-                showPricing
-              />
+              <h3 className="font-semibold text-green-700 dark:text-emerald-400 mb-3">
+                Available Courts
+              </h3>
+              <Cards courts={data.available} onPick={setSelected} showPricing />
             </section>
           ) : (
-            <p className="text-sm text-gray-600">No courts available. Try different date/time.</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              No courts available. Try different date/time.
+            </p>
           )}
 
           {date && hour && data.conflicting.length > 0 && (
             <section>
-              <h3 className="font-semibold text-gray-700 mb-3">
+              <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">
                 Booked at that time — try different hours
               </h3>
               <Cards courts={data.conflicting} dim onPick={setSelected} showPricing />
@@ -220,7 +212,6 @@ export default function SearchBar() {
         </div>
       )}
 
-      {/* MODAL */}
       {selected && (
         <CourtBookingModal
           court={selected}
@@ -228,7 +219,7 @@ export default function SearchBar() {
           initialHour={hour || undefined}
           onClose={(changed) => {
             setSelected(null);
-            if (changed) performSearch(); // refresh nakon bookinga
+            if (changed) performSearch();
           }}
         />
       )}
@@ -261,11 +252,10 @@ function Cards({
             type="button"
             key={c.id}
             onClick={() => onPick(c)}
-            className={`text-left overflow-hidden rounded-xl border bg-white shadow hover:shadow-md transition ${
-              dim ? "opacity-70" : ""
-            }`}
+            className={`text-left overflow-hidden rounded-xl border bg-white dark:bg-[color:var(--card)]
+                        shadow hover:shadow-md transition ${dim ? "opacity-70" : ""}`}
           >
-            <div className="h-40 w-full overflow-hidden bg-gray-100">
+            <div className="h-40 w-full overflow-hidden bg-gray-100 dark:bg-gray-800">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={c.image_url || "/images/courts/placeholder.jpg"}
@@ -277,7 +267,7 @@ function Cards({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h4 className="font-semibold line-clamp-1">{c.name}</h4>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     {c.address}, {c.city}
                   </p>
                 </div>
@@ -288,7 +278,7 @@ function Cards({
                         <div className="text-lg font-semibold">{eff!.toFixed(2)} € / h</div>
                         <div className="text-xs text-gray-500 line-through">{base!.toFixed(2)} € / h</div>
                         {pct != null && (
-                          <div className="mt-0.5 inline-block rounded-full border px-2 py-0.5 text-[11px] text-green-700">
+                          <div className="mt-0.5 inline-block rounded-full border px-2 py-0.5 text-[11px] text-green-700 dark:text-emerald-400">
                             -{pct}%
                           </div>
                         )}
@@ -301,7 +291,9 @@ function Cards({
               </div>
 
               {c.description && (
-                <p className="mt-2 text-sm text-gray-500 line-clamp-2">{c.description}</p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                  {c.description}
+                </p>
               )}
             </div>
           </button>

@@ -35,7 +35,10 @@ function fmtRange(startISO: string, endISO?: string | null) {
 
 function useDebounced<T>(value: T, delay = 350) {
   const [v, setV] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setV(value), delay); return () => clearTimeout(t); }, [value, delay]);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
   return v;
 }
 
@@ -54,16 +57,29 @@ export default function EventsPageClient() {
   const [offset, setOffset] = useState(0);
   const limit = 12;
 
+  // ✅ provjera prijave (guest vs. logged-in)
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/account/profile", { cache: "no-store" });
+        setIsAuthed(res.ok); // 200 => logged in, 401 => guest
+      } catch {
+        setIsAuthed(false);
+      }
+    })();
+  }, []);
+
   const dq = useDebounced(q, 400);
   const dcity = useDebounced(city, 400);
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (sport) p.set("sport", sport);
-    if (from)  p.set("from", from);
-    if (to)    p.set("to", to);
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
     if (dcity) p.set("city", dcity);
-    if (dq)    p.set("q", dq);
+    if (dq) p.set("q", dq);
     p.set("limit", String(limit));
     p.set("offset", String(offset));
     return p.toString();
@@ -85,11 +101,18 @@ export default function EventsPageClient() {
     }
   };
 
-  useEffect(() => { setOffset(0); setEvents([]); }, [sport, from, to, dcity, dq]);
-  useEffect(() => { fetchEvents(offset === 0); /* eslint-disable-next-line */ }, [qs]);
+  useEffect(() => {
+    setOffset(0);
+    setEvents([]);
+  }, [sport, from, to, dcity, dq]);
+
+  useEffect(() => {
+    fetchEvents(offset === 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qs]);
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-10">
         <div className="mb-8 text-center">
           <h1 className="mb-3 text-4xl font-bold text-gray-900">Explore Our Events</h1>
@@ -109,29 +132,48 @@ export default function EventsPageClient() {
         ) : (
           <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {events.map((ev) => (
-              <li key={ev.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
-                <img src={ev.image_url || "/images/events/placeholder.jpg"} alt={ev.title} className="h-44 w-full object-cover transition group-hover:scale-[1.02]" />
+              <li
+                key={ev.id}
+                className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md"
+              >
+                <img
+                  src={ev.image_url || "/images/events/placeholder.jpg"}
+                  alt={ev.title}
+                  className="h-44 w-full object-cover transition group-hover:scale-[1.02]"
+                />
                 <div className="space-y-2 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="line-clamp-1 text-lg font-semibold">{ev.title}</h3>
                     <div className="flex items-center gap-2">
-                      <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{ev.sport}</span>
                       <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">
-                        {(ev.teamsCount ?? 0)}{ev.capacity_teams ? `/${ev.capacity_teams}` : ""} teams
+                        {ev.sport}
+                      </span>
+                      <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">
+                        {(ev.teamsCount ?? 0)}
+                        {ev.capacity_teams ? `/${ev.capacity_teams}` : ""} teams
                       </span>
                     </div>
                   </div>
                   <div className="text-sm text-gray-700">{fmtRange(ev.start_at, ev.end_at)}</div>
                   {(ev.city || ev.address) && (
                     <div className="text-sm text-gray-600">
-                      {ev.city || ""}{ev.city && ev.address ? " • " : ""}{ev.address || ""}
+                      {ev.city || ""}
+                      {ev.city && ev.address ? " • " : ""}
+                      {ev.address || ""}
                     </div>
                   )}
-                  {ev.description && <p className="line-clamp-2 text-sm text-gray-600">{ev.description}</p>}
+                  {ev.description && (
+                    <p className="line-clamp-2 text-sm text-gray-600">{ev.description}</p>
+                  )}
                   <div className="pt-2">
-                    <Link href={`/events/${ev.id}`} className="inline-flex items-center rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black">
-                      View details
-                    </Link>
+                    {isAuthed ? (
+                      <Link
+                        href={`/events/${ev.id}`}
+                        className="inline-flex items-center rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                      >
+                        View details
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               </li>
@@ -141,7 +183,11 @@ export default function EventsPageClient() {
 
         <div className="mt-8 flex justify-center">
           {hasMore && (
-            <button onClick={() => setOffset((o) => o + limit)} disabled={loading} className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60">
+            <button
+              onClick={() => setOffset((o) => o + limit)}
+              disabled={loading}
+              className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+            >
               {loading ? "Loading…" : "Load more"}
             </button>
           )}

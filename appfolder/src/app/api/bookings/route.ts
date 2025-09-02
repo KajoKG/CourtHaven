@@ -11,22 +11,27 @@ function round2(n: number) {
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
 
-  const body = (await req.json()) as {
-    court_id: string;
-    date: string;          // YYYY-MM-DD
-    hour: number;          // 7..23
-    duration: 1 | 2 | 3;
-  };
+  const body = (await req.json()) as
+    | { court_id: string; start_at: string; end_at: string }
+    | { court_id: string; date: string; hour: number; duration: 1 | 2 | 3 };
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+  // --- NOVO: preferiramo start_at/end_at iz browsera; fallback na stari način ---
+  let start: Date;
+  let end: Date;
+
+  if ("start_at" in body && "end_at" in body) {
+    start = new Date(body.start_at);
+    end   = new Date(body.end_at);
+  } else {
+    const [y, m, d] = body.date.split('-').map(Number);
+    start = new Date(y, m - 1, d, body.hour, 0, 0, 0);
+    end   = new Date(start.getTime() + body.duration * 3600 * 1000);
   }
 
-  const start = new Date(body.date); start.setHours(body.hour, 0, 0, 0);
-  const end   = new Date(start.getTime() + body.duration * 3600 * 1000);
-
-  // PRE-CHECK: overlap s postojećim booking-ima
+  // overlap check (strogi overlap: start_at < end && end_at > start)
   const { data: overlaps, error: ovErr } = await supabase
     .from('bookings')
     .select('id')
@@ -34,17 +39,12 @@ export async function POST(req: Request) {
     .lt('start_at', end.toISOString())
     .gt('end_at',   start.toISOString());
 
-  if (ovErr) {
-    return NextResponse.json({ error: ovErr.message }, { status: 400 });
-  }
-  if (overlaps && overlaps.length > 0) {
-    return NextResponse.json(
-      { error: 'Court is already booked for the selected time.' },
-      { status: 409 }
-    );
+  if (ovErr) return NextResponse.json({ error: ovErr.message }, { status: 400 });
+  if ((overlaps?.length ?? 0) > 0) {
+    return NextResponse.json({ error: 'Court is already booked for the selected time.' }, { status: 409 });
   }
 
-  // CIJENA: base €/h s terena
+  // price
   const { data: courtRow, error: courtErr } = await supabase
     .from('courts')
     .select('price_per_hour')
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
 
   const basePerHour = Number(courtRow.price_per_hour ?? 0);
 
-  // OFFER: postoji li aktivna ponuda za taj slot (datum + sat)
+  // offer (optional) – aktivna u trenutku starta
   const { data: offs, error: offErr } = await supabase
     .from('offers')
     .select('id,discount_pct,starts_at,ends_at,valid_hour_start,valid_hour_end')
@@ -65,9 +65,7 @@ export async function POST(req: Request) {
     .lte('starts_at', start.toISOString())
     .gt('ends_at',    start.toISOString());
 
-  if (offErr) {
-    return NextResponse.json({ error: offErr.message }, { status: 400 });
-  }
+  if (offErr) return NextResponse.json({ error: offErr.message }, { status: 400 });
 
   const hour = start.getHours();
   const matchedOffer = (offs ?? []).find(o => {
@@ -79,49 +77,92 @@ export async function POST(req: Request) {
 
   let effectivePerHour = basePerHour;
   let applied_offer_id: string | null = null;
-
   if (matchedOffer && matchedOffer.discount_pct != null) {
     effectivePerHour = round2(basePerHour * (1 - (matchedOffer.discount_pct as number) / 100));
     applied_offer_id = matchedOffer.id as string;
   }
 
-  const price_eur = round2(effectivePerHour * body.duration);
+  // trajanje u satima (izračun iz datuma)
+  const durationHours = Math.max(1, Math.round((end.getTime() - start.getTime()) / 3600000));
+  const price_eur = round2(effectivePerHour * durationHours);
 
-  // INSERT
-  const { error } = await supabase.from('bookings').insert({
-    court_id: body.court_id,
-    user_id: user.id,
-    start_at: start.toISOString(),
-    end_at:   end.toISOString(),
-    price_eur,
-    applied_offer_id
-  });
+  const { data: ins, error } = await supabase
+    .from('bookings')
+    .insert({
+      court_id: body.court_id,
+      user_id: user.id,
+      start_at: start.toISOString(),
+      end_at:   end.toISOString(),
+      price_eur,
+      applied_offer_id
+    })
+    .select('id')
+    .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
-  }
-  return NextResponse.json({ ok: true, price_eur, applied_offer_id });
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  return NextResponse.json({ ok: true, id: ins.id, price_eur, applied_offer_id });
 }
 
-// GET /api/bookings  → moji budući bookinzi (najbliži prvi)
+/** GET → owner + accepted guest bookinzi (budući) */
 export async function GET() {
   const supabase = createRouteHandlerClient({ cookies });
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const { data, error } = await supabase
+  const nowIso = new Date().toISOString();
+
+  // owner
+  const { data: owned, error: ownedErr } = await supabase
     .from('bookings')
-    .select('id,start_at,end_at,price_eur,applied_offer_id,courts(name,sport,address,city,image_url)')
+    .select('id,start_at,end_at,price_eur,applied_offer_id,user_id,courts(name,sport,address,city,image_url)')
     .eq('user_id', user.id)
-    .gte('end_at', new Date().toISOString())
+    .gte('end_at', nowIso)
     .order('start_at', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ bookings: data ?? [] });
+  if (ownedErr) return NextResponse.json({ error: ownedErr.message }, { status: 400 });
+
+  // guest (accepted invites)
+  const { data: invited, error: invErr } = await supabase
+    .from('booking_invites')
+    .select(`
+      id,status,
+      bookings!inner(id,start_at,end_at,price_eur,applied_offer_id,user_id,courts(name,sport,address,city,image_url))
+    `)
+    .eq('invitee_id', user.id)
+    .eq('status', 'accepted')
+    .gte('bookings.end_at', nowIso)
+    .order('start_at', { ascending: true, referencedTable: 'bookings' });
+
+  if (invErr) return NextResponse.json({ error: invErr.message }, { status: 400 });
+
+  const ownerBookings = (owned ?? []).map((b) => ({
+    ...b,
+    role: 'owner' as const,
+    can_cancel: true,
+    can_leave: false,
+    invite_id: null as null,
+  }));
+
+  const guestBookings = (invited ?? []).map((r: any) => ({
+    ...r.bookings,
+    role: 'guest' as const,
+    can_cancel: false,
+    can_leave: true,
+    invite_id: r.id as string,
+  }));
+
+  const map = new Map<string, any>();
+  [...ownerBookings, ...guestBookings].forEach(b => map.set(b.id, b));
+  const merged = Array.from(map.values()).sort(
+    (a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()
+  );
+
+  return NextResponse.json({ bookings: merged });
 }
 
-// DELETE /api/bookings  → otkaži moj booking
+/** DELETE → može otkazati samo owner */
 export async function DELETE(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
@@ -129,12 +170,15 @@ export async function DELETE(req: Request) {
 
   const { id } = await req.json() as { id: string };
 
-  const { error } = await supabase
+  const { data: b, error: bErr } = await supabase
     .from('bookings')
-    .delete()
+    .select('id,user_id')
     .eq('id', id)
-    .eq('user_id', user.id); // sigurnost: može brisati samo svoj
+    .single();
+  if (bErr || !b) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (b.user_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  const { error } = await supabase.from('bookings').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ ok: true });
 }

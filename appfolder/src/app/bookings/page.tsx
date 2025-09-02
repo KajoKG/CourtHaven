@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import InviteFriends from "@/components/InviteFriends";
 
 type Booking = {
   id: string;
@@ -15,6 +16,11 @@ type Booking = {
     city: string;
     image_url: string | null;
   };
+  // NOVO:
+  role: "owner" | "guest";
+  can_cancel: boolean;
+  can_leave: boolean;
+  invite_id?: string | null; // prisutno kad je role === "guest"
 };
 
 type MyEvent = {
@@ -31,6 +37,9 @@ type MyEvent = {
 
 export default function BookingsPage() {
   const router = useRouter();
+  
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [events, setEvents] = useState<MyEvent[]>([]);
@@ -71,14 +80,14 @@ export default function BookingsPage() {
       return `${dFmt.format(s)} ${tFmt.format(s)} – ${dFmt.format(e)} ${tFmt.format(e)}`;
     }
     return `${dFmt.format(s)} ${tFmt.format(s)} – ${tFmt.format(e)}`;
-    };
+  };
 
   const loadBookings = async () => {
     setLoadingB(true);
     setErrB(null);
     try {
       const res = await fetch("/api/bookings", { method: "GET", credentials: "include" });
-      if (res.status === 401) { router.push("/login?reason=bookings"); return; }
+      if (res.status === 401) { setIsAuthed(false); setLoadingB(false); return; }
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Failed to load bookings");
       setBookings(json.bookings || []);
@@ -94,7 +103,7 @@ export default function BookingsPage() {
     setErrE(null);
     try {
       const res = await fetch("/api/events/my", { method: "GET", credentials: "include" });
-      if (res.status === 401) { router.push("/login?reason=bookings"); return; }
+      if (res.status === 401) { setIsAuthed(false); setLoadingE(false); return; }
       if (res.status === 404) { setEvents([]); return; }
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Failed to load events");
@@ -107,11 +116,30 @@ export default function BookingsPage() {
   };
 
   useEffect(() => {
-    loadBookings();
-    loadEvents();
+    (async () => {
+      try {
+        const res = await fetch("/api/account/profile", { cache: "no-store", credentials: "include" });
+        if (res.ok) {
+          setIsAuthed(true);
+          // tek tada učitaj podatke
+          loadBookings();
+          loadEvents();
+        } else {
+          setIsAuthed(false);
+          setLoadingB(false);
+          setLoadingE(false);
+        }
+      } catch {
+        setIsAuthed(false);
+        setLoadingB(false);
+        setLoadingE(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
+  // OWNER → Cancel
   const doCancelBooking = async (id: string) => {
     setCancelLoading(true);
     try {
@@ -123,7 +151,7 @@ export default function BookingsPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to cancel");
-      setBookings((prev) => prev.filter((b) => b.id !== id));
+      await loadBookings();
       showToast("Booking canceled.");
     } catch (e: any) {
       showToast(e?.message ?? "Failed to cancel", 1800);
@@ -133,6 +161,26 @@ export default function BookingsPage() {
     }
   };
 
+  // GUEST → Leave
+  const leaveBooking = async (inviteId: string) => {
+    setLeavingId(inviteId);
+    try {
+      const res = await fetch(`/api/bookings/invites/${inviteId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Failed to leave");
+      await loadBookings();
+      showToast("Left booking.");
+    } catch (e: any) {
+      showToast(e?.message ?? "Failed to leave", 1800);
+    } finally {
+      setLeavingId(null);
+    }
+  };
+
+  // EVENTS → Leave (ostaje isto)
   const leaveEvent = async (eventId: string) => {
     setLeavingId(eventId);
     try {
@@ -152,12 +200,31 @@ export default function BookingsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-10">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-4xl font-bold text-gray-900">Bookings</h1>
           <p className="text-gray-600">Your upcoming court bookings and events.</p>
         </div>
+
+        {isAuthed === false && (
+  <div className="rounded-2xl border bg-white p-12 text-center">
+    <div className="mb-2 text-lg font-semibold text-gray-800">
+      You need to be logged in to view your bookings.
+    </div>
+    <p className="text-sm text-gray-600 mb-4">
+      Please log in to access your reservations and events.
+    </p>
+    <Link
+      href="/login"
+      className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+    >
+      Log in
+    </Link>
+  </div>
+)}
+{isAuthed !== false && (
+  <>
 
         {/* COURT BOOKINGS */}
         <section className="mb-10">
@@ -223,13 +290,33 @@ export default function BookingsPage() {
                       </div>
                       <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{b.courts.sport}</span>
                     </div>
-                    <div className="pt-2">
-                      <button
-                        onClick={() => setCancelId(b.id)}
-                        className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50"
-                      >
-                        Cancel
-                      </button>
+
+                    <div className="flex items-center gap-2 pt-2">
+                      {b.role === "owner" ? (
+                        <>
+                          <InviteFriends
+                            bookingId={b.id}
+                            triggerClassName="rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                            onSent={() => showToast("Invites sent")}
+                          />
+                          <button
+                            onClick={() => setCancelId(b.id)}
+                            className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        b.can_leave && b.invite_id ? (
+                          <button
+                            onClick={() => leaveBooking(b.invite_id!)}
+                            disabled={leavingId === b.invite_id}
+                            className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            {leavingId === b.invite_id ? "Leaving…" : "Leave"}
+                          </button>
+                        ) : null
+                      )}
                     </div>
                   </div>
                 </li>
@@ -316,6 +403,9 @@ export default function BookingsPage() {
             </ul>
           )}
         </section>
+
+        </>
+)}
       </div>
 
       {/* Toast */}
@@ -325,7 +415,7 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {/* Cancel Modal */}
+      {/* Cancel Modal (owner) */}
       {cancelId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-[92vw] max-w-sm rounded-xl bg-white p-6 shadow-lg">

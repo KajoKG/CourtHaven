@@ -134,10 +134,10 @@ export default function EventDetailsClient() {
       else if (member3Invalid && member3Ref.current) member3Ref.current.focus();
       showToast(
         teamSize === 2
-          ? "Upiši partnerovo ime i prezime."
+          ? "Enter partners full name"
           : teamSize === 3
-          ? "Upiši imena obojice suigrača."
-          : "Provjeri polja."
+          ? "Enter the names of both teammates"
+          : "Check Fields"
       );
       return;
     }
@@ -300,16 +300,16 @@ export default function EventDetailsClient() {
                         ref={partnerRef}
                         value={partner}
                         onChange={(e) => setPartner(e.target.value)}
-                        placeholder="Ime i prezime partnera"
+                        placeholder="Partners full name"
                         className={`w-full rounded-lg border p-2.5 ${
                           triedSubmit && partner.trim().length === 0 ? "border-red-400 focus:ring-red-300" : ""
                         }`}
                         aria-invalid={triedSubmit && partner.trim().length === 0 ? "true" : "false"}
                       />
                       {triedSubmit && partner.trim().length === 0 && (
-                        <p className="mt-1 text-xs text-red-600">Upiši partnerovo ime i prezime.</p>
+                        <p className="mt-1 text-xs text-red-600">Enter your partners full name.</p>
                       )}
-                      <p className="mt-1 text-xs text-gray-500">Padel prijava je za par (2 igrača).</p>
+                      <p className="mt-1 text-xs text-gray-500"></p>
                     </div>
                   )}
 
@@ -323,14 +323,14 @@ export default function EventDetailsClient() {
                           ref={member2Ref}
                           value={member2}
                           onChange={(e) => setMember2(e.target.value)}
-                          placeholder="Ime i prezime"
+                          placeholder="Full name"
                           className={`w-full rounded-lg border p-2.5 ${
                             triedSubmit && member2.trim().length === 0 ? "border-red-400 focus:ring-red-300" : ""
                           }`}
                           aria-invalid={triedSubmit && member2.trim().length === 0 ? "true" : "false"}
                         />
                         {triedSubmit && member2.trim().length === 0 && (
-                          <p className="mt-1 text-xs text-red-600">Upiši ime i prezime prvog suigrača.</p>
+                          <p className="mt-1 text-xs text-red-600">First teammate full name</p>
                         )}
                       </div>
                       <div>
@@ -341,18 +341,18 @@ export default function EventDetailsClient() {
                           ref={member3Ref}
                           value={member3}
                           onChange={(e) => setMember3(e.target.value)}
-                          placeholder="Ime i prezime"
+                          placeholder="Full name"
                           className={`w-full rounded-lg border p-2.5 ${
                             triedSubmit && member3.trim().length === 0 ? "border-red-400 focus:ring-red-300" : ""
                           }`}
                           aria-invalid={triedSubmit && member3.trim().length === 0 ? "true" : "false"}
                         />
                         {triedSubmit && member3.trim().length === 0 && (
-                          <p className="mt-1 text-xs text-red-600">Upiši ime i prezime drugog suigrača.</p>
+                          <p className="mt-1 text-xs text-red-600">Second Teammate full name</p>
                         )}
                       </div>
                       <p className="sm:col-span-2 text-xs text-gray-500">
-                        Basketball 3×3 — prijavljuješ ekipu (3 igrača).
+                        Basketball 3×3 — 3 players.
                       </p>
                     </div>
                   )}

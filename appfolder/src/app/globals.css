@@ -2,65 +2,170 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Root CSS Variables */
+/* =========================================================
+   THEME VARIABLES
+   ========================================================= */
+
+/* 🌞 Light mode (default) */
 :root {
-  --background: #ffffff; /* Bijela pozadina */
-  --foreground: #171717; /* Tamnosiva boja teksta */
+  /* Surface tokens */
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --border: #e5e7eb; /* gray-200 */
+
+  /* Gradient tokens (LIGHT) */
+  --g-start: #ffffff;
+  --g-mid: #bbf7d0;  /* green-100 */
+  --g-end: #ffffff;
+
+  color-scheme: light;
 }
 
-/* Globalni stilovi za tijelo */
+/* 🌙 Dark mode */
+:root.dark {
+  --background: #0a0f16; /* tamna, neutralno-plavkasta */
+  --foreground: #eef2ff; /* vrlo svijetli tekst */
+  --card: #0f172a;       /* slate-900 */
+  --border: #243149;     /* tamniji border */
+
+  /* Gradient tokens (DARK) */
+  --g-start: #0b1220;    /* ~ slate-950 */
+  --g-mid: #0f2a22;      /* tamno zeleno-plava (emerald-950 mix) */
+  --g-end: #0b1220;
+
+  color-scheme: dark;
+}
+
+/* =========================================================
+   GLOBALS
+   ========================================================= */
+
+html, body { height: 100%; }
+
 body {
-  background: var(--background);
+  background: linear-gradient(
+    to bottom,
+    var(--g-start) 0%,
+    var(--g-mid) 45%,
+    var(--g-end) 100%
+  );
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   margin: 0;
   padding: 0;
 }
 
-/* Stilovi za naslove */
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Geist Sans', sans-serif;
-  margin: 0;
+.app-surface { background: var(--background) !important; }
+
+/* =========================================================
+   TYPOGRAPHY
+   ========================================================= */
+h1, h2, h3, h4, h5, h6 { font-family: 'Geist Sans', sans-serif; margin: 0; }
+.text-center { text-align: center; }
+.mt-4 { margin-top: 1rem; }
+.mt-8 { margin-top: 2rem; }
+.min-h-screen { min-height: 100vh; }
+img { display: block; }
+
+/* =========================================================
+   NAVIGATION & FOOTER SURFACES
+   ========================================================= */
+
+nav { margin: 0; padding: 0; }
+
+footer {
+  background: var(--card);
+  color: var(--foreground);
+  border-top: 1px solid var(--border);
 }
 
-/* Utility klase */
-.text-center {
-  text-align: center;
+footer a { color: inherit; text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+footer img { width: 48px; height: 48px; }
+
+/* =========================================================
+   DARK MODE BRIDGE
+   ========================================================= */
+
+:root.dark .bg-white,
+:root.dark .bg-gray-50,
+:root.dark .bg-gray-100,
+:root.dark .bg-slate-50,
+:root.dark .bg-neutral-50,
+:root.dark .bg-zinc-50 { background-color: var(--card) !important; }
+
+:root.dark [class*="bg-white/"],
+:root.dark [class*="bg-gray-50/"],
+:root.dark [class*="bg-gray-100/"] { background-color: var(--card) !important; }
+
+:root.dark .border,
+:root.dark .border-gray-100,
+:root.dark .border-gray-200,
+:root.dark .border-gray-300,
+:root.dark .divide-gray-200 { border-color: var(--border) !important; }
+
+:root.dark .divide-y > :not([hidden]) ~ :not([hidden]) { border-color: var(--border) !important; }
+
+:root.dark .text-gray-900 { color: var(--foreground) !important; }
+:root.dark .text-gray-800 { color: #e7eaf6 !important; }
+:root.dark .text-gray-700 { color: #e5e7eb !important; }
+:root.dark .text-gray-600 { color: #d1d5db !important; }
+:root.dark .text-gray-500 { color: #cbd5e1 !important; }
+:root.dark .text-gray-400 { color: #94a3b8 !important; }
+
+:root.dark .hover\:bg-gray-50:hover { background-color: #111827 !important; }
+:root.dark .hover\:bg-gray-100:hover { background-color: #1f2937 !important; }
+
+:root.dark .shadow,
+:root.dark .shadow-sm,
+:root.dark .shadow-md { box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35) !important; }
+
+:root.dark nav a { color: #e5e7eb; }
+:root.dark nav a:hover { color: #34d399; }
+
+:root.dark .bg-white.rounded-2xl.shadow {
+  background-color: var(--card) !important;
+  border: 1px solid var(--border) !important;
 }
 
-.mt-4 {
-  margin-top: 1rem;
+:root.dark .fixed.bg-white,
+:root.dark .sticky.bg-white,
+:root.dark .absolute.bg-white {
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
 }
 
-.mt-8 {
-  margin-top: 2rem;
+/* =========================================================
+   FORMS – čitljivost u oba moda
+   ========================================================= */
+
+/* Kontrole: crni tekst u LIGHT, bijeli u DARK */
+.form-ctrl {
+  color: #111827;               /* light text (gray-900) */
+  background-color: #ffffff;
+  border: 1px solid #d1d5db;    /* gray-300 */
+}
+.form-ctrl::placeholder { color: #6b7280; } /* gray-500 */
+
+:root.dark .form-ctrl {
+  color: #ffffff;
+  background-color: transparent;      /* leži na card podlozi */
+  border-color: var(--border);
+}
+:root.dark .form-ctrl::placeholder { color: rgba(255,255,255,.72); }
+
+/* 🔽 Tamni nativni meniji/datepicker u dark modu */
+:root.dark select.form-ctrl,
+:root.dark input[type="date"].form-ctrl,
+:root.dark input[type="time"].form-ctrl {
+  color-scheme: dark;              /* kaže browseru: koristi dark popup */
 }
 
-.min-h-screen {
-  min-height: 100vh;
-}
-
-/* Navigacija */
-nav {
-  margin: 0;
-  padding: 0;
-}
-
-img {
-  display: block;
-}
-
-/* Footer */
-footer a {
-  color: white;
-  text-decoration: none;
-}
-
-footer a:hover {
-  text-decoration: underline;
-}
-
-footer img {
-  width: 48px;
-  height: 48px;
+/* Fallback: oboji stavke unutar select popup-a gdje je podržano */
+:root.dark select.form-ctrl option,
+:root.dark select.form-ctrl optgroup {
+  background-color: var(--card);
+  color: #ffffff;
 }

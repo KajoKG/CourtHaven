@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import InviteFriends from "@/components/InviteFriends"; // prilagodi putanju ako je drugi folder
 
 type Court = {
   id: string;
@@ -14,7 +15,7 @@ type Court = {
 };
 
 type DaySlot = {
-  hour: number;                         // 7..23
+  hour: number; // 7..23
   available: boolean;
   price_per_hour: number | null;
   effective_price_per_hour: number | null;
@@ -77,6 +78,9 @@ export default function CourtBookingModal({
   const minDate = todayISO();
   const maxDate = in14DaysISO();
 
+  // NEW: ID svježe kreiranog bookinga – ako postoji, nudimo “Invite friends”
+  const [createdBookingId, setCreatedBookingId] = useState<string | null>(null);
+
   // Fetch day view for the court
   const loadDay = async (d: string) => {
     if (!d) {
@@ -108,7 +112,7 @@ export default function CourtBookingModal({
     setSlotStatus("loading");
     try {
       // Prefer daySlots ako ih imamo (brže i konzistentno s gridom)
-      const fromDay = daySlots?.find(s => String(s.hour) === String(h));
+      const fromDay = daySlots?.find((s) => String(s.hour) === String(h));
       if (fromDay) {
         setSlotStatus(fromDay.available ? "available" : "conflicting");
         setBasePerHour(fromDay.price_per_hour);
@@ -179,15 +183,19 @@ export default function CourtBookingModal({
     }
     setLoading(true);
     try {
+      // ➜ NOVO: računamo točan UTC ISO u browseru (Europe/Zagreb lokalno)
+      const [y, m, d] = date.split("-").map(Number);
+      const start = new Date(y, m - 1, d, Number(hour), 0, 0, 0);
+      const end = new Date(start.getTime() + Number(duration) * 3600 * 1000);
+
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           court_id: court.id,
-          date,
-          hour: Number(hour),
-          duration: Number(duration),
+          start_at: start.toISOString(),
+          end_at: end.toISOString(),
         }),
       });
 
@@ -203,8 +211,9 @@ export default function CourtBookingModal({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Booking failed");
 
-      setMsg({ type: "ok", text: "Booked ✓" });
-      setTimeout(() => onClose(true), 900);
+      // NEW: ne zatvaramo – prikažemo gumb za pozivnice
+      setCreatedBookingId(json.id);
+      setMsg({ type: "ok", text: "Booked ✓ — you can invite friends now." });
     } catch (e: any) {
       setMsg({ type: "err", text: e.message ?? "Booking error" });
     } finally {
@@ -217,11 +226,7 @@ export default function CourtBookingModal({
   return (
     <div className="fixed inset-0 z-50">
       {/* backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => onClose(false)}
-        aria-hidden
-      />
+      <div className="absolute inset-0 bg-black/50" onClick={() => onClose(false)} aria-hidden />
       {/* modal */}
       <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white shadow-xl">
         {/* header */}
@@ -253,6 +258,7 @@ export default function CourtBookingModal({
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="w-full rounded-lg border p-3"
+              disabled={!!createdBookingId}
             />
             <p className="mt-1 text-[11px] text-gray-500">Max 14 days in advance</p>
           </div>
@@ -264,6 +270,7 @@ export default function CourtBookingModal({
               value={hour}
               onChange={(e) => setHour(e.target.value)}
               className="w-full rounded-lg border p-3"
+              disabled={!!createdBookingId}
             >
               <option value="">-- : --</option>
               {hours.map((h) => (
@@ -281,14 +288,14 @@ export default function CourtBookingModal({
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
               className="w-full rounded-lg border p-3"
-              disabled={!date || !hour}
+              disabled={!date || !hour || !!createdBookingId}
             >
               <option value="1">1 h</option>
               <option value="2">2 h</option>
               <option value="3">3 h</option>
             </select>
             <p className="mt-1 text-[11px] text-gray-500">
-              Latest start 23:00 → 1h (policy limits apply)
+              Latest start 23:00 → max 1h
             </p>
           </div>
 
@@ -310,39 +317,39 @@ export default function CourtBookingModal({
           <div className="md:col-span-3">
             <div className="mb-2 text-sm font-medium text-gray-700">Availability for the day</div>
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
-              {dayLoading && (
+              {dayLoading &&
                 Array.from({ length: 16 }).map((_, i) => (
                   <div key={i} className="h-9 rounded-lg bg-gray-200 animate-pulse" />
-                ))
-              )}
-              {!dayLoading && daySlots?.map((s) => {
-                const label = `${String(s.hour).padStart(2, "0")}:00`;
-                const disabled = !s.available;
-                return (
-                  <button
-                    key={s.hour}
-                    type="button"
-                    onClick={() => {
-                      setHour(String(s.hour));
-                      setBasePerHour(s.price_per_hour);
-                      setEffPerHour(s.effective_price_per_hour ?? s.price_per_hour);
-                      setDiscountPct(s.active_offer?.discount_pct ?? null);
-                      setSlotStatus(s.available ? "available" : "conflicting");
-                    }}
-                    disabled={disabled}
-                    className={`h-9 rounded-lg border text-sm transition ${
-                      String(s.hour) === hour
-                        ? "bg-green-600 text-white border-green-700"
-                        : disabled
+                ))}
+              {!dayLoading &&
+                daySlots?.map((s) => {
+                  const label = `${String(s.hour).padStart(2, "0")}:00`;
+                  const disabled = !s.available || !!createdBookingId;
+                  return (
+                    <button
+                      key={s.hour}
+                      type="button"
+                      onClick={() => {
+                        setHour(String(s.hour));
+                        setBasePerHour(s.price_per_hour);
+                        setEffPerHour(s.effective_price_per_hour ?? s.price_per_hour);
+                        setDiscountPct(s.active_offer?.discount_pct ?? null);
+                        setSlotStatus(s.available ? "available" : "conflicting");
+                      }}
+                      disabled={disabled}
+                      className={`h-9 rounded-lg border text-sm transition ${
+                        String(s.hour) === hour
+                          ? "bg-green-600 text-white border-green-700"
+                          : disabled
                           ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
                           : "bg-white hover:bg-green-50 border-gray-200"
-                    }`}
-                    title={disabled ? "Unavailable (Booked/Event)" : "Select this hour"}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+                      }`}
+                      title={disabled ? "Unavailable (Booked/Event)" : "Select this hour"}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
             </div>
           </div>
 
@@ -414,21 +421,38 @@ export default function CourtBookingModal({
           )}
         </div>
 
-        {/* footer */}
+        {/* footer (jedan, uvjetan) */}
         <div className="flex items-center justify-end gap-3 border-t px-6 py-4">
-          <button
-            onClick={() => onClose(false)}
-            className="rounded-lg px-4 py-2 text-sm hover:bg-gray-100"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={book}
-            disabled={loading || slotStatus === "conflicting" || !date || !hour}
-            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-          >
-            {slotStatus === "conflicting" ? "Unavailable" : loading ? "Booking…" : "Book"}
-          </button>
+          {!createdBookingId ? (
+            <>
+              <button
+                onClick={() => onClose(false)}
+                className="rounded-lg px-4 py-2 text-sm hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={book}
+                disabled={loading || slotStatus === "conflicting" || !date || !hour}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+              >
+                {slotStatus === "conflicting" ? "Unavailable" : loading ? "Booking…" : "Book"}
+              </button>
+            </>
+          ) : (
+            <>
+              <InviteFriends
+                bookingId={createdBookingId}
+                triggerClassName="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+              />
+              <button
+                onClick={() => onClose(true)}
+                className="rounded-lg px-4 py-2 text-sm hover:bg-gray-100"
+              >
+                Done
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -20,6 +20,14 @@ type Friend   = { friendship_id: string; since: string; user: UserLite };
 type Incoming = { id: string; from: UserLite; created_at: string };
 type Outgoing = { id: string; to: UserLite; created_at: string };
 
+type Notification = {
+  id: string;
+  type: "invite_accepted" | "invite_left";
+  payload: any;
+  created_at: string;
+  read_at: string | null;
+};
+
 /* ---------- Helpers ---------- */
 async function compressImage(file: File, maxSide = 512, quality = 0.82): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
@@ -37,11 +45,19 @@ async function compressImage(file: File, maxSide = 512, quality = 0.82): Promise
   return new File([blob], (file.name.replace(/\.\w+$/, "") || "avatar") + ".jpg", { type: "image/jpeg" });
 }
 
+// flatten helper: uzmi prvi element ako je array
+function one<T = any>(v: any): T | null {
+  if (v == null) return null as any;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
 export default function AccountClient() {
   /* ---------- Profile state ---------- */
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+
 
   const [fn, setFn] = useState("");
   const [ln, setLn] = useState("");
@@ -60,6 +76,15 @@ export default function AccountClient() {
   const [outgoing, setOutgoing] = useState<Outgoing[]>([]);
   const [friendEmail, setFriendEmail] = useState("");
   const [friendsBusy, setFriendsBusy] = useState(false);
+
+  /* ---------- Booking invites state ---------- */
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [invBusy, setInvBusy] = useState(false);
+
+  /* ---------- Notifications state ---------- */
+  const [notifs, setNotifs] = useState<Notification[]>([]);
+  const [notifBusy, setNotifBusy] = useState(false);
+
   const [toast, setToast] = useState<string | null>(null);
 
   /* ---------- Load profile ---------- */
@@ -78,7 +103,45 @@ export default function AccountClient() {
       setErr(e.message ?? "Error");
     } finally { setLoading(false); }
   };
-  useEffect(() => { loadProfile(); }, []);
+useEffect(() => {
+  (async () => {
+    setLoading(true);           // ⬅️ pobrini se da krene u "loading"
+    setErr(null);
+    try {
+      const res = await fetch("/api/account/profile", {
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      if (res.status === 401) {
+        setIsAuthed(false);
+        setProfile(null);
+        return;
+      }
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to load profile");
+      }
+
+      const p = json.profile as Profile;
+      setIsAuthed(true);
+      setProfile(p);
+      setFn(p.first_name || "");
+      setLn(p.last_name || "");
+      setFull(p.full_name || "");
+      setBio(p.bio || "");
+      setAvatarUrl(p.avatar_url);
+    } catch (e: any) {
+      setIsAuthed(false);
+      setErr(e?.message ?? "Error");
+    } finally {
+      setLoading(false);        // ⬅️ KLJUČNO: sad se UI odblokira
+    }
+  })();
+}, []);
+
+
 
   /* ---------- Save profile ---------- */
   const save = async () => {
@@ -118,7 +181,15 @@ export default function AccountClient() {
 
   /* ---------- Change password ---------- */
   const changePassword = async () => {
-    if (!pw || pw.length < 6) { alert("Password must be at least 6 characters."); return; }
+    if (!pw || pw.length < 6) { 
+      alert("Password must be at least 6 characters."); 
+      return; 
+    }
+
+    // ✅ confirmation
+    const ok = window.confirm("Are you sure you want to change your password?");
+    if (!ok) return;
+
     setBusy(true);
     try {
       const res = await fetch("/api/account/password", {
@@ -127,12 +198,16 @@ export default function AccountClient() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to change password");
-      setPw(""); alert("Password updated.");
-    } catch (e: any) { alert(e.message ?? "Failed to change password"); }
-    finally { setBusy(false); }
+      setPw(""); 
+      alert("Password updated.");
+    } catch (e: any) { 
+      alert(e.message ?? "Failed to change password"); 
+    } finally { 
+      setBusy(false); 
+    }
   };
-
   /* ---------- Friends: load + actions ---------- */
+
   const loadFriends = async () => {
     try {
       const res = await fetch("/api/friends", { cache: "no-store" });
@@ -192,16 +267,101 @@ export default function AccountClient() {
     } finally { setFriendsBusy(false); }
   };
 
+  /* ---------- Booking invites: load + actions ---------- */
+  const loadInvites = async () => {
+    try {
+      const res = await fetch("/api/bookings/invites", { cache: "no-store" });
+      const json = await res.json();
+      if (res.ok) setPendingInvites(json.invites || []);
+    } catch { /* noop */ }
+  };
+  useEffect(() => { if (!loading) loadInvites(); /* eslint-disable-next-line */ }, [loading]);
+
+  const respondInvite = async (id: string, action: "accept" | "decline") => {
+    setInvBusy(true);
+    try {
+      const res = await fetch(`/api/bookings/invites/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed");
+      await loadInvites();
+    } catch (e:any) {
+      setToast(e.message ?? "Error");
+      setTimeout(() => setToast(null), 1500);
+    } finally { setInvBusy(false); }
+  };
+
+  /* ---------- Notifications: load + actions ---------- */
+  const loadNotifs = async () => {
+    try {
+      const res = await fetch("/api/notifications", { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Failed to load notifications");
+      setNotifs(json.notifications || []);
+    } catch {
+      /* silent */
+    }
+  };
+  useEffect(() => { if (!loading) loadNotifs(); /* eslint-disable-next-line */ }, [loading]);
+
+  const markNotifRead = async (id: string) => {
+    setNotifBusy(true);
+    try {
+      await fetch(`/api/notifications/${id}`, { method: "PATCH" });
+      setNotifs(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+    } finally { setNotifBusy(false); }
+  };
+
+  const deleteNotif = async (id: string) => {
+    setNotifBusy(true);
+    try {
+      await fetch(`/api/notifications/${id}`, { method: "DELETE" });
+      setNotifs(prev => prev.filter(n => n.id !== id));
+    } finally { setNotifBusy(false); }
+  };
+
+  const markAllRead = async () => {
+    setNotifBusy(true);
+    try {
+      await fetch(`/api/notifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "read_all" }),
+      });
+      setNotifs(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+    } finally { setNotifBusy(false); }
+  };
+
   /* ---------- UI ---------- */
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-3xl px-4 py-10">
         <h1 className="mb-6 text-3xl font-bold text-gray-900">Account</h1>
+        {isAuthed === false && (
+  <div className="rounded-2xl border bg-white p-12 text-center">
+    <div className="mb-2 text-lg font-semibold text-gray-800">
+      You need to be logged in to view your account.
+    </div>
+    <p className="text-sm text-gray-600 mb-4">
+      Please log in to manage your profile, friends, and bookings.
+    </p>
+    <Link
+      href="/login"
+      className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+    >
+      Log in
+    </Link>
+  </div>
+)}
+
 
         {loading && <p>Loading…</p>}
         {err && <p className="text-red-600">{err}</p>}
 
-        {!loading && profile && (
+        {isAuthed && !loading && profile && (
           <div className="space-y-8">
             {/* Profile */}
             <section className="rounded-2xl border bg-white p-6 shadow-sm">
@@ -295,6 +455,63 @@ export default function AccountClient() {
               <p className="mt-2 text-xs text-gray-500">
                 You’ll stay signed in after the change.
               </p>
+            </section>
+
+            {/* Notifications */}
+            <section className="rounded-2xl border bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Notifications</h2>
+                <button
+                  onClick={markAllRead}
+                  disabled={notifBusy || notifs.every(n => n.read_at)}
+                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Mark all as read
+                </button>
+              </div>
+
+              {notifs.length === 0 ? (
+                <p className="text-sm text-gray-600">No notifications.</p>
+              ) : (
+                <ul className="divide-y">
+                  {notifs.map((n) => {
+                    const when = new Date(n.created_at).toLocaleString();
+                    const p = n.payload || {};
+                    const text = n.type === "invite_accepted"
+                      ? `${p.invitee_name || p.invitee_email || "Someone"} accepted your invite${p.court_name ? ` for ${p.court_name}` : ""}${p.start_at ? ` (${new Date(p.start_at).toLocaleString()})` : ""}.`
+                      : `${p.invitee_name || p.invitee_email || "Someone"} left your booking${p.court_name ? ` at ${p.court_name}` : ""}${p.start_at ? ` (${new Date(p.start_at).toLocaleString()})` : ""}.`;
+
+                    return (
+                      <li key={n.id} className="flex items-start justify-between gap-3 py-3">
+                        <div className="min-w-0">
+                          <div className={`text-sm ${n.read_at ? "text-gray-700" : "font-medium text-gray-900"}`}>
+                            {text}
+                          </div>
+                          <div className="text-xs text-gray-500">{when}</div>
+                        </div>
+                        <div className="shrink-0 flex gap-2">
+                          {!n.read_at && (
+                            <button
+                              onClick={() => markNotifRead(n.id)}
+                              disabled={notifBusy}
+                              className="rounded-lg border px-2.5 py-1 text-xs hover:bg-gray-50 disabled:opacity-60"
+                            >
+                              Mark read
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deleteNotif(n.id)}
+                            disabled={notifBusy}
+                            className="rounded-lg border px-2.5 py-1 text-xs hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </section>
 
             {/* Friends */}
@@ -401,6 +618,52 @@ export default function AccountClient() {
                 )}
               </div>
             </section>
+
+            {/* Booking invites */}
+            <section className="rounded-2xl border bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-lg font-semibold">Booking invites</h2>
+              {pendingInvites.length === 0 ? (
+                <p className="text-sm text-gray-600">No pending invites.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {pendingInvites.map((it: any) => {
+                    const booking = one(it.bookings) as any;
+                    const court = one(booking?.courts) as any;
+                    const courtName = court?.name || "Court";
+                    const when = booking?.start_at ? new Date(booking.start_at).toLocaleString() : "";
+                    const whereBits = [court?.city, court?.address].filter(Boolean).join(" • ");
+                    return (
+                      <li key={it.id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">
+                            {courtName}{when ? ` • ${when}` : ""}
+                          </div>
+                          {whereBits && (
+                            <div className="text-xs text-gray-600 truncate">{whereBits}</div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => respondInvite(it.id, "accept")}
+                            disabled={invBusy}
+                            className="rounded-lg bg-green-600 px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => respondInvite(it.id, "decline")}
+                            disabled={invBusy}
+                            className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-60"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
           </div>
         )}
 
@@ -412,5 +675,5 @@ export default function AccountClient() {
         )}
       </div>
     </main>
-  );
+  ); 
 }

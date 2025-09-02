@@ -14,12 +14,15 @@ export default function BlogPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [isAuthed, setIsAuthed] = useState(false);   // NEW
+  const [isAuthed, setIsAuthed] = useState(false);
 
-  // NEW – lagana provjera je li user prijavljen (za prikaz gumba)
+  // ✅ provjera prijave (za prikaz gumba)
   useEffect(() => {
     const supabase = createClientComponentClient();
-    supabase.auth.getUser().then(({ data }) => setIsAuthed(!!data.user)).catch(() => setIsAuthed(false));
+    supabase.auth
+      .getUser()
+      .then(({ data }) => setIsAuthed(!!data.user))
+      .catch(() => setIsAuthed(false));
   }, []);
 
   async function load(p = 1) {
@@ -39,19 +42,21 @@ export default function BlogPage() {
     }
   }
 
-  useEffect(() => { load(1); }, []);
+  useEffect(() => {
+    load(1);
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-gray-50 p-10">
+    <main className="flex min-h-screen flex-col items-center p-10">
       <div className="mb-8 flex w-full max-w-6xl items-center justify-between">
         <div>
           <h1 className="text-5xl font-bold text-gray-800">Our Blog</h1>
           <p className="text-lg text-gray-600 mt-2">Read our latest updates and insights.</p>
         </div>
 
-        {/* NEW – gumb za dodavanje posta (samo kad je user prijavljen) */}
+        {/* ✅ gumb Add post samo za logirane */}
         {isAuthed && (
           <Link
             href="/blog/new"
@@ -67,7 +72,10 @@ export default function BlogPage() {
       ) : (
         <ul className="grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 w-full">
           {posts.map((post, index) => (
-            <li key={post.id} className="bg-white p-8 rounded-lg shadow-md hover:shadow-lg transition-shadow">
+            <li
+              key={post.id}
+              className="bg-white p-8 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+            >
               <a
                 href={`/blog/${post.id}`}
                 className="block text-2xl font-semibold text-green-600 hover:text-green-700"

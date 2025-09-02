@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 export const dynamic = "force-dynamic";
 
 function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
+  // strogi overlap: [aStart, aEnd) ∩ [bStart, bEnd) ≠ ∅
   return aStart < bEnd && bStart < aEnd;
 }
 
@@ -22,9 +23,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Missing sport/date/hour" }, { status: 400 });
   }
 
-  const start = new Date(`${date}T${String(hour).padStart(2, "0")}:00:00`);
-  const end = new Date(start);
-  end.setHours(end.getHours() + duration);
+  // TZ-safe: konstruiraj lokalno po komponentama
+  const [y, m, d] = date.split("-").map(Number);
+  const start = new Date(y, m - 1, d, hour, 0, 0, 0);
+  const end = new Date(start.getTime() + duration * 3600 * 1000);
 
   // 1) All courts for that sport
   const { data: courts, error: cErr } = await supabase
@@ -37,12 +39,13 @@ export async function GET(req: Request) {
   if (!courtIds.length) return NextResponse.json({ available: [], conflicting: [] });
 
   // 2) Bookings overlapping the requested slot
+  // Overlap uvjet: start_at < end AND end_at > start
   const { data: bookings } = await supabase
     .from("bookings")
     .select("court_id,start_at,end_at")
     .in("court_id", courtIds)
-    .lte("start_at", end.toISOString())
-    .gte("end_at", start.toISOString());
+    .lt("start_at", end.toISOString())
+    .gt("end_at", start.toISOString());
 
   // 3) Event usage for those courts
   const { data: ec } = await supabase
@@ -53,21 +56,22 @@ export async function GET(req: Request) {
   const eventIds = Array.from(new Set((ec ?? []).map((x) => x.event_id as string)));
   let windows: Array<{ event_id: string; start_at: string; end_at: string }> = [];
   if (eventIds.length) {
+    // windows koji overlapaju slot
     const { data: win } = await supabase
       .from("event_windows")
       .select("event_id,start_at,end_at")
       .in("event_id", eventIds)
-      .lte("start_at", end.toISOString())
-      .gte("end_at", start.toISOString());
+      .lt("start_at", end.toISOString())
+      .gt("end_at", start.toISOString());
     if (win) windows = win;
 
-    // complement with whole-event ranges
+    // whole-event rasponi (ako nema windows-a)
     const { data: evs } = await supabase
       .from("events")
       .select("id,start_at,end_at")
       .in("id", eventIds)
-      .lte("start_at", end.toISOString())
-      .gte("end_at", start.toISOString());
+      .lt("start_at", end.toISOString())
+      .gt("end_at", start.toISOString());
 
     if (evs && evs.length) {
       windows.push(
@@ -116,7 +120,6 @@ export async function GET(req: Request) {
     if (!conflict) {
       const evIds = eventIdsByCourt.get(c.id) || [];
       if (evIds.length) {
-        // check windows first; if none, whole event range already in "windows"
         conflict = evIds.some((eid) => {
           const wr = windowsByEvent.get(eid) || [];
           return wr.some((r) =>

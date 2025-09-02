@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
+import Link from "next/link";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Court = {
   id: string;
@@ -21,7 +23,6 @@ type Offer = {
   starts_at: string;
   ends_at: string;
   featured: boolean;
-  // ⬇️ dodano: satni prozor (ako postoji)
   valid_hour_start?: number | null;
   valid_hour_end?: number | null;
   court: Court;
@@ -33,39 +34,29 @@ type ApiResp = { offers: Offer[]; total: number; hasMore: boolean };
 function suggestSlotForOffer(o: Offer): { date: string; hour: string } | null {
   const now = new Date();
   const end = new Date(o.ends_at);
-
-  // ako je sve gotovo, nema slota
   if (now >= end) return null;
 
-  // krećemo od danas u 00:00
   let day = new Date(now);
   day.setHours(0, 0, 0, 0);
 
-  const hs = o.valid_hour_start ?? 7;   // default 7h
-  const he = o.valid_hour_end ?? 24;    // default do kraja dana
+  const hs = o.valid_hour_start ?? 7;
+  const he = o.valid_hour_end ?? 24;
 
-  // prođi do 14 dana unaprijed (isto ograničenje kao i booking UI)
   for (let d = 0; d < 14; d++) {
     const base = new Date(day.getTime() + d * 24 * 3600 * 1000);
-
-    // za danas, kreni od sljedećeg punog sata
     let startHour = hs;
     if (d === 0) {
       const nextHour = now.getMinutes() > 0 ? now.getHours() + 1 : now.getHours();
       startHour = Math.max(hs, nextHour);
     }
-
     for (let h = startHour; h < he; h++) {
       const slot = new Date(base);
       slot.setHours(h, 0, 0, 0);
-      if (slot > end) return null; // ponuda završava prije ovog slota
-      // ispod pretpostavljamo da ponuda vrijedi cijeli dan između starts_at i ends_at,
-      // a satni prozor dodatno sužava sat u danu (što si i tražio)
+      if (slot > end) return null;
       const yyyy = slot.toISOString().split("T")[0];
       return { date: yyyy, hour: String(h) };
     }
   }
-
   return null;
 }
 
@@ -80,12 +71,24 @@ export default function OffersPageClient() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"endsSoon" | "discount" | "price">("endsSoon");
 
+  // auth state
+  const [isAuthed, setIsAuthed] = useState(false);
+
   // booking modal
   const [bookingCourt, setBookingCourt] = useState<Court | null>(null);
   const [prefill, setPrefill] = useState<{ date: string; hour: string } | null>(null);
 
   const [offset, setOffset] = useState(0);
   const limit = 12;
+
+  // provjera prijave (lightweight)
+  useEffect(() => {
+    const supabase = createClientComponentClient();
+    supabase.auth
+      .getUser()
+      .then(({ data }) => setIsAuthed(!!data.user))
+      .catch(() => setIsAuthed(false));
+  }, []);
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
@@ -106,14 +109,20 @@ export default function OffersPageClient() {
       if (!res.ok) throw new Error((json as any).error || "Failed to load offers");
       setTotal(json.total);
       setHasMore(json.hasMore);
-      setOffers(prev => (reset ? json.offers : [...prev, ...json.offers]));
+      setOffers((prev) => (reset ? json.offers : [...prev, ...json.offers]));
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { setOffset(0); setOffers([]); }, [sport, city, q, sort]);
-  useEffect(() => { load(offset === 0); /* eslint-disable-next-line */ }, [qs]);
+  useEffect(() => {
+    setOffset(0);
+    setOffers([]);
+  }, [sport, city, q, sort]);
+  useEffect(() => {
+    load(offset === 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qs]);
 
   const fmtEndsIn = (endsISO: string) => {
     const now = new Date();
@@ -129,7 +138,7 @@ export default function OffersPageClient() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-10">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-4xl font-bold text-gray-900">Offers</h1>
@@ -180,7 +189,7 @@ export default function OffersPageClient() {
             {offers.map((o) => (
               <li key={o.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={o.court.image_url || "/images/courts/placeholder.jpg"} alt={o.court.name} className="h-44 w-full object-cover transition group-hover:scale-[1.02]"/>
+                <img src={o.court.image_url || "/images/courts/placeholder.jpg"} alt={o.court.name} className="h-44 w-full object-cover transition group-hover:scale-[1.02]" />
                 <div className="space-y-2 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="line-clamp-1 text-lg font-semibold">{o.court.name}</h3>
@@ -188,7 +197,9 @@ export default function OffersPageClient() {
                       <span className="rounded-full border px-2 py-0.5 text-xs text-green-700">{`-${o.discount_pct}%`}</span>
                     )}
                   </div>
-                  <div className="text-sm text-gray-700">{o.court.city} • {o.court.address}</div>
+                  <div className="text-sm text-gray-700">
+                    {o.court.city} • {o.court.address}
+                  </div>
 
                   {(o.price != null || o.original_price != null) && (
                     <div className="flex items-baseline gap-2">
@@ -201,15 +212,24 @@ export default function OffersPageClient() {
                   {o.description && <p className="line-clamp-2 text-sm text-gray-600">{o.description}</p>}
 
                   <div className="pt-2">
-                    <button
-                      onClick={() => {
-                        setBookingCourt(o.court);
-                        setPrefill(suggestSlotForOffer(o));
-                      }}
-                      className="inline-flex items-center rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
-                    >
-                      Book
-                    </button>
+                    {isAuthed ? (
+                      <button
+                        onClick={() => {
+                          setBookingCourt(o.court);
+                          setPrefill(suggestSlotForOffer(o));
+                        }}
+                        className="inline-flex items-center rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                      >
+                        Book
+                      </button>
+                    ) : (
+                      <Link
+                        href="/login"
+                        className="inline-flex items-center rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50"
+                      >
+                        Log in to book
+                      </Link>
+                    )}
                   </div>
                 </div>
               </li>
@@ -227,9 +247,9 @@ export default function OffersPageClient() {
         </div>
       </div>
 
-      {/* Booking modal (lazy import) */}
+      {/* Booking modal (lazy import) – render samo kad je user prijavljen */}
       <Suspense fallback={null}>
-        {bookingCourt && (
+        {isAuthed && bookingCourt && (
           <LazyBookingModal
             court={bookingCourt}
             prefill={prefill}
@@ -258,12 +278,7 @@ function LazyBookingModal({
     import("@/components/CourtBookingModal").then((m) => setComp(() => m.default));
   }, []);
   if (!Comp) return null;
-  return (
-    <Comp
-      court={court}
-      initialDate={prefill?.date}
-      initialHour={prefill?.hour}
-      onClose={onClose}
-    />
-  );
+  return <Comp court={court} initialDate={prefill?.date} initialHour={prefill?.hour} onClose={onClose} />;
 }
+
+
