@@ -1,24 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 
 type Court = { name: string; city: string | null; address: string | null; image_url: string | null };
 
 type EventData = {
   id: string;
   title: string;
-  sport: string;
+  sport: "tennis" | "padel" | "basketball" | "football" | "badminton" | string;
   description: string | null;
   start_at: string;
   end_at: string;
+  team_size: number | null;
+  capacity_teams: number | null;
 };
 
 type DetailsResp = {
   event: EventData;
-  rsvpCount: number;
+  rsvpCount?: number;
+  teamsCount?: number;
+  capacity_teams?: number | null;
+  team_size?: number | null;
   isJoined: boolean;
-  courts: Court[]; // može biti []
+  courts: Court[];
 };
 
 function fmtRange(startISO?: string, endISO?: string) {
@@ -34,7 +40,7 @@ function fmtRange(startISO?: string, endISO?: string) {
     if (end && start.toDateString() !== end.toDateString()) {
       return `${dFmt.format(start)} ${tFmt.format(start)} – ${dFmt.format(end)} ${tFmt.format(end)}`;
     }
-    if (end) return `${dFmt.format(start)} ${tFmt.format(start)} – ${tFmt.format(end)}`;
+    if (end) return `${dFmt.format(start)} ${tFmt.format(start)} – ${dFmt.format(end)}`;
     return `${dFmt.format(start)} ${tFmt.format(start)}`;
   } catch {
     return "—";
@@ -50,6 +56,22 @@ export default function EventDetailsClient() {
   const [mutating, setMutating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // team fields
+  const [partner, setPartner] = useState(""); // padel
+  const [member2, setMember2] = useState(""); // basket
+  const [member3, setMember3] = useState(""); // basket
+
+  // ui validation helpers
+  const [triedSubmit, setTriedSubmit] = useState(false);
+  const partnerRef = useRef<HTMLInputElement>(null);
+  const member2Ref = useRef<HTMLInputElement>(null);
+  const member3Ref = useRef<HTMLInputElement>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (t: string, ms = 1500) => {
+    setToast(t);
+    window.setTimeout(() => setToast(null), ms);
+  };
+
   const load = async () => {
     setLoading(true);
     setErr(null);
@@ -57,10 +79,13 @@ export default function EventDetailsClient() {
       const res = await fetch(`/api/events/${id}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Failed to load");
-      // minimalna validacija oblika
+
       const safe: DetailsResp = {
         event: json.event,
         rsvpCount: Number(json.rsvpCount ?? 0),
+        teamsCount: Number(json.teamsCount ?? json.rsvpCount ?? 0),
+        capacity_teams: json.capacity_teams ?? json.event?.capacity_teams ?? null,
+        team_size: json.team_size ?? json.event?.team_size ?? null,
         isJoined: Boolean(json.isJoined),
         courts: Array.isArray(json.courts) ? json.courts : [],
       };
@@ -73,25 +98,85 @@ export default function EventDetailsClient() {
     }
   };
 
-  useEffect(() => {
-    if (id) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  useEffect(() => { if (id) load(); /* eslint-disable-next-line */ }, [id]);
+
+  const teamSize = useMemo(
+    () =>
+      data?.team_size ??
+      data?.event?.team_size ??
+      (data?.event?.sport === "padel" ? 2 : data?.event?.sport === "basketball" ? 3 : 1),
+    [data]
+  );
+  const capacity = data?.capacity_teams ?? data?.event?.capacity_teams ?? null;
+  const teams = data?.teamsCount ?? data?.rsvpCount ?? 0;
+  const full = capacity != null && capacity > 0 && teams >= capacity;
+
+  const partnerNeeded = teamSize === 2;
+  const basketNeeded = teamSize === 3;
+  const partnerInvalid = partnerNeeded && partner.trim().length === 0;
+  const member2Invalid = basketNeeded && member2.trim().length === 0;
+  const member3Invalid = basketNeeded && member3.trim().length === 0;
+
+  const canJoin =
+    !mutating &&
+    !full &&
+    (teamSize === 1 ||
+      (teamSize === 2 && !partnerInvalid) ||
+      (teamSize === 3 && !member2Invalid && !member3Invalid));
 
   const join = async () => {
-    setMutating(true);
+    setTriedSubmit(true);
     setErr(null);
+
+    if (!canJoin) {
+      if (partnerInvalid && partnerRef.current) partnerRef.current.focus();
+      if (member2Invalid && member2Ref.current) member2Ref.current.focus();
+      else if (member3Invalid && member3Ref.current) member3Ref.current.focus();
+      showToast(
+        teamSize === 2
+          ? "Upiši partnerovo ime i prezime."
+          : teamSize === 3
+          ? "Upiši imena obojice suigrača."
+          : "Provjeri polja."
+      );
+      return;
+    }
+
+    setMutating(true);
     try {
-      const res = await fetch(`/api/events/${id}/rsvp`, { method: "POST", credentials: "include" });
+      const body: any = {};
+      if (teamSize === 2) body.partner_full_name = partner.trim();
+      if (teamSize === 3) {
+        body.member2_full_name = member2.trim();
+        body.member3_full_name = member3.trim();
+      }
+
+      const res = await fetch(`/api/events/${id}/rsvp`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Join failed");
-      await load();
-    } catch (e: any) {
-      if (String(e?.message).includes("Not authenticated")) {
-        router.push("/login");
+      if (!res.ok) {
+        if (String(json?.error).includes("Not authenticated")) {
+          router.push("/login");
+          return;
+        }
+        showToast(String(json?.error || "Join failed"));
+        setErr(String(json?.error || "Join failed"));
         return;
       }
-      setErr(e?.message ?? "Error");
+      await load();
+      showToast("Joined ✓");
+      setTriedSubmit(false);
+      setPartner("");
+      setMember2("");
+      setMember3("");
+    } catch (e: any) {
+      const msg = e?.message ?? "Error";
+      setErr(msg);
+      showToast(msg);
     } finally {
       setMutating(false);
     }
@@ -103,10 +188,17 @@ export default function EventDetailsClient() {
     try {
       const res = await fetch(`/api/events/${id}/rsvp`, { method: "DELETE", credentials: "include" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Leave failed");
+      if (!res.ok) {
+        showToast(String(json?.error || "Leave failed"));
+        setErr(String(json?.error || "Leave failed"));
+        return;
+      }
       await load();
+      showToast("Left event");
     } catch (e: any) {
-      setErr(e?.message ?? "Error");
+      const msg = e?.message ?? "Error";
+      setErr(msg);
+      showToast(msg);
     } finally {
       setMutating(false);
     }
@@ -124,7 +216,7 @@ export default function EventDetailsClient() {
     );
   }
 
-  if (err || !data) {
+  if (err && !data) {
     return (
       <main className="min-h-screen bg-gray-50">
         <div className="mx-auto max-w-5xl px-4 py-10">
@@ -136,11 +228,8 @@ export default function EventDetailsClient() {
     );
   }
 
-  const ev = data.event;
-  const courts = data.courts ?? [];
-  const rsvpCount = data.rsvpCount ?? 0;
-  const isJoined = !!data.isJoined;
-
+  const ev = data!.event;
+  const courts = data!.courts ?? [];
   const heroImg = courts[0]?.image_url || "/images/events/placeholder.jpg";
   const when = fmtRange(ev.start_at, ev.end_at);
 
@@ -148,14 +237,27 @@ export default function EventDetailsClient() {
     <main className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-10">
         <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={heroImg} alt={ev.title} className="h-72 w-full object-cover" />
+          {/* HERO: next/image (sharp & responsive) */}
+          <div className="relative h-72 w-full">
+            <Image
+              src={heroImg}
+              alt={ev.title}
+              fill
+              sizes="100vw"
+              className="object-cover"
+              priority
+            />
+          </div>
+
           <div className="space-y-4 p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h1 className="text-2xl font-bold">{ev.title}</h1>
               <div className="flex items-center gap-2">
                 <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{ev.sport}</span>
-                <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{rsvpCount} going</span>
+                <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">
+                  {(data!.teamsCount ?? data!.rsvpCount ?? 0)}
+                  {capacity ? `/${capacity}` : ""} teams
+                </span>
               </div>
             </div>
 
@@ -181,8 +283,89 @@ export default function EventDetailsClient() {
               </div>
             )}
 
-            <div className="pt-2">
-              {isJoined ? (
+            {/* Join/Leave + dinamična forma po team_size */}
+            <section className="pt-2">
+              {!data!.isJoined ? (
+                <div className="space-y-3">
+                  {teamSize === 1 && (
+                    <p className="text-sm text-gray-600">Singles format — you join as an individual.</p>
+                  )}
+
+                  {teamSize === 2 && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Partner full name
+                      </label>
+                      <input
+                        ref={partnerRef}
+                        value={partner}
+                        onChange={(e) => setPartner(e.target.value)}
+                        placeholder="Ime i prezime partnera"
+                        className={`w-full rounded-lg border p-2.5 ${
+                          triedSubmit && partner.trim().length === 0 ? "border-red-400 focus:ring-red-300" : ""
+                        }`}
+                        aria-invalid={triedSubmit && partner.trim().length === 0 ? "true" : "false"}
+                      />
+                      {triedSubmit && partner.trim().length === 0 && (
+                        <p className="mt-1 text-xs text-red-600">Upiši partnerovo ime i prezime.</p>
+                      )}
+                      <p className="mt-1 text-xs text-gray-500">Padel prijava je za par (2 igrača).</p>
+                    </div>
+                  )}
+
+                  {teamSize === 3 && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                          Teammate #1 — full name
+                        </label>
+                        <input
+                          ref={member2Ref}
+                          value={member2}
+                          onChange={(e) => setMember2(e.target.value)}
+                          placeholder="Ime i prezime"
+                          className={`w-full rounded-lg border p-2.5 ${
+                            triedSubmit && member2.trim().length === 0 ? "border-red-400 focus:ring-red-300" : ""
+                          }`}
+                          aria-invalid={triedSubmit && member2.trim().length === 0 ? "true" : "false"}
+                        />
+                        {triedSubmit && member2.trim().length === 0 && (
+                          <p className="mt-1 text-xs text-red-600">Upiši ime i prezime prvog suigrača.</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                          Teammate #2 — full name
+                        </label>
+                        <input
+                          ref={member3Ref}
+                          value={member3}
+                          onChange={(e) => setMember3(e.target.value)}
+                          placeholder="Ime i prezime"
+                          className={`w-full rounded-lg border p-2.5 ${
+                            triedSubmit && member3.trim().length === 0 ? "border-red-400 focus:ring-red-300" : ""
+                          }`}
+                          aria-invalid={triedSubmit && member3.trim().length === 0 ? "true" : "false"}
+                        />
+                        {triedSubmit && member3.trim().length === 0 && (
+                          <p className="mt-1 text-xs text-red-600">Upiši ime i prezime drugog suigrača.</p>
+                        )}
+                      </div>
+                      <p className="sm:col-span-2 text-xs text-gray-500">
+                        Basketball 3×3 — prijavljuješ ekipu (3 igrača).
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={join}
+                    disabled={!canJoin}
+                    className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-60"
+                  >
+                    {full ? "Event full" : mutating ? "Joining…" : "Join event"}
+                  </button>
+                </div>
+              ) : (
                 <button
                   onClick={leave}
                   disabled={mutating}
@@ -190,16 +373,8 @@ export default function EventDetailsClient() {
                 >
                   {mutating ? "Leaving…" : "Leave event"}
                 </button>
-              ) : (
-                <button
-                  onClick={join}
-                  disabled={mutating}
-                  className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-60"
-                >
-                  {mutating ? "Joining…" : "Join event"}
-                </button>
               )}
-            </div>
+            </section>
 
             {err && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -209,6 +384,17 @@ export default function EventDetailsClient() {
           </div>
         </div>
       </div>
+
+      {/* tiny toast */}
+      {toast && (
+        <div
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm shadow"
+          role="status"
+          aria-live="polite"
+        >
+          {toast}
+        </div>
+      )}
     </main>
   );
 }

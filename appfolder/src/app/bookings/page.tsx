@@ -24,7 +24,6 @@ type MyEvent = {
   description: string | null;
   start_at: string;
   end_at: string;
-  // “primary court” info (derivirano na backendu radi kartice)
   city: string | null;
   address: string | null;
   image_url: string | null;
@@ -42,11 +41,9 @@ export default function BookingsPage() {
   const [errB, setErrB] = useState<string | null>(null);
   const [errE, setErrE] = useState<string | null>(null);
 
-  // cancel booking modal
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
 
-  // leave event (RSVP) spinner
   const [leavingId, setLeavingId] = useState<string | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -55,24 +52,27 @@ export default function BookingsPage() {
     setTimeout(() => setToast(null), ms);
   };
 
-  // utils
   const tz = "Europe/Zagreb";
   const fmtRange = (startISO: string, endISO: string) => {
     const s = new Date(startISO);
     const e = new Date(endISO);
     const dFmt = new Intl.DateTimeFormat("hr-HR", {
-      timeZone: tz, day: "2-digit", month: "2-digit", year: "numeric",
+      timeZone: tz,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
     });
     const tFmt = new Intl.DateTimeFormat("hr-HR", {
-      timeZone: tz, hour: "2-digit", minute: "2-digit",
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
     });
     if (s.toDateString() !== e.toDateString()) {
       return `${dFmt.format(s)} ${tFmt.format(s)} – ${dFmt.format(e)} ${tFmt.format(e)}`;
     }
     return `${dFmt.format(s)} ${tFmt.format(s)} – ${tFmt.format(e)}`;
-  };
+    };
 
-  // loads
   const loadBookings = async () => {
     setLoadingB(true);
     setErrB(null);
@@ -95,7 +95,6 @@ export default function BookingsPage() {
     try {
       const res = await fetch("/api/events/my", { method: "GET", credentials: "include" });
       if (res.status === 401) { router.push("/login?reason=bookings"); return; }
-      // ako endpoint ne postoji, nemoj rušiti stranicu
       if (res.status === 404) { setEvents([]); return; }
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Failed to load events");
@@ -113,7 +112,6 @@ export default function BookingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // actions
   const doCancelBooking = async (id: string) => {
     setCancelLoading(true);
     try {
@@ -125,7 +123,7 @@ export default function BookingsPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to cancel");
-      setBookings(prev => prev.filter(b => b.id !== id));
+      setBookings((prev) => prev.filter((b) => b.id !== id));
       showToast("Booking canceled.");
     } catch (e: any) {
       showToast(e?.message ?? "Failed to cancel", 1800);
@@ -144,7 +142,7 @@ export default function BookingsPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to leave");
-      setEvents(prev => prev.filter(ev => ev.id !== eventId));
+      setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
       showToast("Left event.");
     } catch (e: any) {
       showToast(e?.message ?? "Failed to leave", 1800);
@@ -165,7 +163,9 @@ export default function BookingsPage() {
         <section className="mb-10">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold">Upcoming court bookings</h2>
-            <Link href="/" className="text-sm text-gray-600 underline hover:text-gray-800">Find a court</Link>
+            <Link href="/" className="text-sm text-gray-600 underline hover:text-gray-800">
+              Find a court
+            </Link>
           </div>
 
           {errB && (
@@ -190,7 +190,15 @@ export default function BookingsPage() {
           {!loadingB && !errB && bookings.length === 0 && (
             <div className="rounded-2xl border bg-white p-12 text-center">
               <div className="mb-1 text-lg font-semibold text-gray-800">No upcoming bookings</div>
-              <p className="text-sm text-gray-600">Find a court and make your first reservation.</p>
+              <p className="text-sm text-gray-600 mb-4">
+                Find a court and make your first reservation.
+              </p>
+              <Link
+                href="/"
+                className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+              >
+                Book now
+              </Link>
             </div>
           )}
 
@@ -234,7 +242,9 @@ export default function BookingsPage() {
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold">Upcoming events</h2>
-            <Link href="/events" className="text-sm text-gray-600 underline hover:text-gray-800">Browse events</Link>
+            <Link href="/events" className="text-sm text-gray-600 underline hover:text-gray-800">
+              Browse events
+            </Link>
           </div>
 
           {errE && (

@@ -10,7 +10,7 @@ type Court = {
   city: string;
   description: string | null;
   image_url: string | null;
-  // ⬇️ nova polja iz /api/courts/search
+  // pricing fields from /api/courts/search
   price_per_hour?: number | null;
   effective_price_per_hour?: number | null;
   active_offer?: {
@@ -44,7 +44,8 @@ function in14DaysISO() {
 }
 
 export default function SearchBar() {
-  const [sport, setSport] = useState("");
+  const [sport, setSport] = useState("");        // canonical: lowercase values
+  const [city, setCity] = useState("");          // NEW
   const [date, setDate] = useState("");
   const [hour, setHour] = useState("");
   const [duration, setDuration] = useState("1");
@@ -62,7 +63,8 @@ export default function SearchBar() {
     setError(null);
     try {
       const qs = new URLSearchParams();
-      if (sport) qs.set("sport", sport.toLowerCase());
+      if (sport) qs.set("sport", sport);     // 👈 no toLowerCase; values already canonical
+      if (city) qs.set("city", city);
       if (date) qs.set("date", date);
       if (hour) qs.set("hour", hour);
       if (date && hour) qs.set("duration", duration);
@@ -89,6 +91,7 @@ export default function SearchBar() {
       {/* SEARCH FORM */}
       <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
         <div className="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0">
+
           {/* Sport */}
           <div className="flex-1">
             <label htmlFor="sport" className="font-bold text-lg mb-2 block text-black">
@@ -102,12 +105,27 @@ export default function SearchBar() {
               required
             >
               <option value="" disabled>Sport</option>
-              <option value="Padel">Padel</option>
-              <option value="Tennis">Tennis</option>
-              <option value="Basketball">Basketball</option>
-              <option value="Football">Football</option>
-              <option value="Badminton">Badminton</option>
+              <option value="padel">Padel</option>
+              <option value="tennis">Tennis</option>
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+              <option value="badminton">Badminton</option>
             </select>
+          </div>
+
+          {/* City (NEW) */}
+          <div className="flex-1">
+            <label htmlFor="city" className="font-bold text-lg mb-2 block text-black">
+              City
+            </label>
+            <input
+              id="city"
+              type="text"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="e.g. Zagreb"
+              className="p-3 border rounded-md w-full focus:ring-2 focus:ring-green-400 text-black"
+            />
           </div>
 
           {/* Date */}
@@ -184,7 +202,7 @@ export default function SearchBar() {
               <Cards
                 courts={data.available}
                 onPick={setSelected}
-                showPricing // prikaz cijena
+                showPricing
               />
             </section>
           ) : (

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
 
 type Page = { title: string; path: `/${string}` };
@@ -12,20 +12,33 @@ const basePages: Page[] = [
   { title: "Blogs", path: "/blog" },
   { title: "Offers", path: "/offers" },
   { title: "Bookings", path: "/bookings" },
-  { title: "Settings", path: "/settings" },
+  { title: "Account", path: "/account" },
 ];
 
-function NavLink({ page, pathname }: { page: Page; pathname: string }) {
+function NavLink({
+  page,
+  pathname,
+  badge,
+}: {
+  page: Page;
+  pathname: string;
+  badge?: string | null;
+}) {
   const isActive = pathname.startsWith(page.path);
   return (
     <li className="px-4 py-2">
       <Link
         href={page.path}
-        className={`text-lg hover:underline ${
+        className={`relative inline-flex items-center gap-2 text-lg hover:underline ${
           isActive ? "font-bold text-green-600" : "text-gray-700"
         }`}
       >
         {page.title}
+        {badge && (
+          <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-green-600 px-1 text-[11px] font-semibold text-white">
+            {badge}
+          </span>
+        )}
       </Link>
     </li>
   );
@@ -35,15 +48,17 @@ export function Navigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [showLogoutToast, setShowLogoutToast] = useState(false);
+  const [pending, setPending] = useState<number>(0); // ← broj pending zahtjeva
   const pathname = usePathname();
-  const router = useRouter();
 
   // provjera sessiona + slušanje promjena
   useEffect(() => {
     let mounted = true;
 
     const check = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!mounted) return;
       setSignedIn(!!session);
     };
@@ -59,34 +74,57 @@ export function Navigation() {
     };
   }, []);
 
+  // povuci pending zahtjeve (svakih 30s) — koristimo već postojeći GET /api/friends
+  useEffect(() => {
+    let alive = true;
+
+    async function fetchPending() {
+      try {
+        const res = await fetch("/api/friends", { cache: "no-store", credentials: "include" });
+        if (!res.ok) return;
+        const json = await res.json();
+        const count = Array.isArray(json?.incoming) ? json.incoming.length : 0;
+        if (alive) setPending(count);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    fetchPending();
+    const id = setInterval(fetchPending, 30000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setIsMenuOpen(false);
-
-    // prikaži kratki toast 1s pa redirect
     setShowLogoutToast(true);
-    setTimeout(() => {
-      setShowLogoutToast(false);
-    }, 1000);
+    setTimeout(() => setShowLogoutToast(false), 1000);
   };
+
+  const accountBadge = pending > 0 ? (pending > 9 ? "9+" : String(pending)) : null;
 
   return (
     <>
       {/* Toast */}
       {showLogoutToast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] rounded-xl bg-gray-900 text-white px-4 py-2 text-sm shadow-md transition-opacity">
+        <div className="fixed top-4 left-1/2 z-[100] -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-2 text-sm text-white shadow-md">
           You are logged out
         </div>
       )}
 
-      <nav className="bg-gray-50 border-b border-gray-200 shadow-md">
-        <div className="flex justify-between items-center px-4 md:px-8">
+      <nav className="border-b border-gray-200 bg-gray-50 shadow-md">
+        <div className="flex items-center justify-between px-4 md:px-8">
           {/* Logo */}
           <Link href="/">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/icons/icon.png"
               alt="CourtHaven Logo"
-              className="w-12 h-12 rounded-full cursor-pointer"
+              className="h-12 w-12 cursor-pointer rounded-full"
             />
           </Link>
 
@@ -109,9 +147,14 @@ export function Navigation() {
           </button>
 
           {/* Desktop links */}
-          <ul className="hidden md:flex space-x-6 items-center">
+          <ul className="hidden items-center space-x-6 md:flex">
             {basePages.map((page) => (
-              <NavLink key={page.path} page={page} pathname={pathname} />
+              <NavLink
+                key={page.path}
+                page={page}
+                pathname={pathname}
+                badge={page.title === "Account" ? accountBadge : null}
+              />
             ))}
 
             {/* Auth action (desno) */}
@@ -119,7 +162,7 @@ export function Navigation() {
               <li className="px-2 py-2">
                 <button
                   onClick={handleLogout}
-                  className="rounded-lg bg-red-600 text-white px-4 py-2 text-sm font-semibold hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   Log out
                 </button>
@@ -139,10 +182,10 @@ export function Navigation() {
 
         {/* Fullscreen mobile menu */}
         {isMenuOpen && (
-          <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 flex flex-col items-center justify-center text-white">
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900/95 text-white">
             {/* Close button */}
             <button
-              className="absolute top-4 right-4 text-white text-3xl"
+              className="absolute right-4 top-4 text-3xl text-white"
               onClick={() => setIsMenuOpen(false)}
               aria-label="Close menu"
             >
@@ -150,17 +193,22 @@ export function Navigation() {
             </button>
 
             {/* Menu links */}
-            <ul className="space-y-6 text-xl text-center">
+            <ul className="space-y-6 text-center text-xl">
               {basePages.map((page) => (
                 <li key={page.path}>
                   <Link
                     href={page.path}
                     onClick={() => setIsMenuOpen(false)}
-                    className={`hover:underline ${
+                    className={`relative inline-flex items-center gap-2 hover:underline ${
                       pathname.startsWith(page.path) ? "font-bold text-green-400" : ""
                     }`}
                   >
                     {page.title}
+                    {page.title === "Account" && accountBadge && (
+                      <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-green-500 px-1 text-[11px] font-semibold text-white">
+                        {accountBadge}
+                      </span>
+                    )}
                   </Link>
                 </li>
               ))}
@@ -170,7 +218,7 @@ export function Navigation() {
                 <li>
                   <button
                     onClick={handleLogout}
-                    className="w-40 rounded-lg bg-red-600 text-white px-4 py-2 text-lg font-semibold hover:bg-red-700"
+                    className="w-40 rounded-lg bg-red-600 px-4 py-2 text-lg font-semibold text-white hover:bg-red-700"
                   >
                     Log out
                   </button>

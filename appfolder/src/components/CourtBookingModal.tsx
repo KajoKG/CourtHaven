@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 
 type Court = {
   id: string;
@@ -10,6 +11,24 @@ type Court = {
   city: string;
   description: string | null;
   image_url: string | null;
+};
+
+type DaySlot = {
+  hour: number;                         // 7..23
+  available: boolean;
+  price_per_hour: number | null;
+  effective_price_per_hour: number | null;
+  active_offer: {
+    id: string;
+    title: string | null;
+    discount_pct: number | null;
+    starts_at: string;
+    ends_at: string;
+    valid_hour_start: number | null;
+    valid_hour_end: number | null;
+    price: number | null;
+    original_price: number | null;
+  } | null;
 };
 
 function todayISO() {
@@ -39,24 +58,45 @@ export default function CourtBookingModal({
   const [hour, setHour] = useState<string>(initialHour || "");
   const [duration, setDuration] = useState<string>("1");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
-    null
-  );
+  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   // status termina za ovaj court
   const [slotStatus, setSlotStatus] =
     useState<"unknown" | "loading" | "available" | "conflicting">("unknown");
 
-  // 🔹 Pricing state
+  // pricing state (za odabran sat)
   const [basePerHour, setBasePerHour] = useState<number | null>(null);
   const [effPerHour, setEffPerHour] = useState<number | null>(null);
   const [discountPct, setDiscountPct] = useState<number | null>(null);
+
+  // Day view
+  const [dayLoading, setDayLoading] = useState(false);
+  const [daySlots, setDaySlots] = useState<DaySlot[] | null>(null);
 
   const hours = useMemo(() => Array.from({ length: 17 }, (_, i) => i + 7), []);
   const minDate = todayISO();
   const maxDate = in14DaysISO();
 
-  // Provjera zauzetosti + dohvat cijene/ponude za točno odabrani slot
+  // Fetch day view for the court
+  const loadDay = async (d: string) => {
+    if (!d) {
+      setDaySlots(null);
+      return;
+    }
+    setDayLoading(true);
+    try {
+      const res = await fetch(`/api/courts/${court.id}/day?date=${encodeURIComponent(d)}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Failed to load day view");
+      setDaySlots(json.slots as DaySlot[]);
+    } catch {
+      setDaySlots(null);
+    } finally {
+      setDayLoading(false);
+    }
+  };
+
+  // provjeri zauzeće & cijene za točno odabrani slot
   const checkSlot = async (d: string, h: string, dur: string) => {
     if (!d || !h) {
       setSlotStatus("unknown");
@@ -67,6 +107,17 @@ export default function CourtBookingModal({
     }
     setSlotStatus("loading");
     try {
+      // Prefer daySlots ako ih imamo (brže i konzistentno s gridom)
+      const fromDay = daySlots?.find(s => String(s.hour) === String(h));
+      if (fromDay) {
+        setSlotStatus(fromDay.available ? "available" : "conflicting");
+        setBasePerHour(fromDay.price_per_hour);
+        setEffPerHour(fromDay.effective_price_per_hour ?? fromDay.price_per_hour);
+        setDiscountPct(fromDay.active_offer?.discount_pct ?? null);
+        return;
+      }
+
+      // fallback: pogodak preko search endpointa
       const qs = new URLSearchParams({
         sport: court.sport,
         date: d,
@@ -77,13 +128,9 @@ export default function CourtBookingModal({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Search failed");
 
-      const isConflict = (json.conflicting as any[]).some(
-        (c: any) => c.id === court.id
-      );
+      const isConflict = (json.conflicting as any[]).some((c: any) => c.id === court.id);
       setSlotStatus(isConflict ? "conflicting" : "available");
 
-      // pronađi zapis o ovom courtu (preferiramo iz "available";
-      // ako je conflicting, pokušaj iz "conflicting" kako bismo barem pokazali cijene)
       const mine =
         (json.available as any[]).find((c: any) => c.id === court.id) ??
         (json.conflicting as any[]).find((c: any) => c.id === court.id) ??
@@ -112,11 +159,17 @@ export default function CourtBookingModal({
     }
   };
 
-  // automatska provjera kad se promijeni datum/sat/trajanje
+  // auto: day view kad se promijeni datum
+  useEffect(() => {
+    if (date) loadDay(date);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
+  // auto: provjera za odabrani slot
   useEffect(() => {
     if (date && hour) checkSlot(date, hour, duration);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, hour, duration]);
+  }, [date, hour, duration, daySlots]);
 
   const book = async () => {
     setMsg(null);
@@ -143,17 +196,13 @@ export default function CourtBookingModal({
         return;
       }
       if (res.status === 409) {
-        setMsg({
-          type: "err",
-          text: "This court is already booked for the selected time.",
-        });
+        setMsg({ type: "err", text: "This court is already booked for the selected time." });
         return;
       }
 
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Booking failed");
 
-      // Ako želiš, ovdje možeš pročitati json.price_eur i pokazati toast.
       setMsg({ type: "ok", text: "Booked ✓" });
       setTimeout(() => onClose(true), 900);
     } catch (e: any) {
@@ -163,9 +212,7 @@ export default function CourtBookingModal({
     }
   };
 
-  // izračun ukupne cijene (est.)
-  const total =
-    effPerHour != null ? (Number(duration) * effPerHour).toFixed(2) : null;
+  const total = effPerHour != null ? (Number(duration) * effPerHour).toFixed(2) : null;
 
   return (
     <div className="fixed inset-0 z-50">
@@ -180,9 +227,7 @@ export default function CourtBookingModal({
         {/* header */}
         <div className="flex items-center justify-between border-b px-6 py-4">
           <div className="min-w-0">
-            <h3 className="truncate text-xl font-semibold">
-              Book: {court.name}
-            </h3>
+            <h3 className="truncate text-xl font-semibold">Book: {court.name}</h3>
             <p className="truncate text-sm text-gray-600">
               {court.address}, {court.city} • {court.sport}
             </p>
@@ -200,9 +245,7 @@ export default function CourtBookingModal({
         <div className="grid gap-4 p-6 md:grid-cols-3">
           {/* date */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Date
-            </label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Date</label>
             <input
               type="date"
               min={minDate}
@@ -211,16 +254,12 @@ export default function CourtBookingModal({
               onChange={(e) => setDate(e.target.value)}
               className="w-full rounded-lg border p-3"
             />
-            <p className="mt-1 text-[11px] text-gray-500">
-              Max 14 days in advance
-            </p>
+            <p className="mt-1 text-[11px] text-gray-500">Max 14 days in advance</p>
           </div>
 
           {/* hour */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Time
-            </label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Time</label>
             <select
               value={hour}
               onChange={(e) => setHour(e.target.value)}
@@ -237,9 +276,7 @@ export default function CourtBookingModal({
 
           {/* duration */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Duration
-            </label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Duration</label>
             <select
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
@@ -251,18 +288,62 @@ export default function CourtBookingModal({
               <option value="3">3 h</option>
             </select>
             <p className="mt-1 text-[11px] text-gray-500">
-              Latest start 23:00 → 1h (policy brine o ograničenjima)
+              Latest start 23:00 → 1h (policy limits apply)
             </p>
           </div>
 
-          {/* preview image */}
+          {/* preview image (sharp) */}
           <div className="md:col-span-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={court.image_url || "/images/courts/placeholder.jpg"}
-              alt={court.name}
-              className="h-56 w-full rounded-xl object-cover"
-            />
+            <div className="relative h-56 w-full overflow-hidden rounded-xl">
+              <Image
+                src={court.image_url || "/images/courts/placeholder.jpg"}
+                alt={court.name}
+                fill
+                sizes="(max-width: 768px) 92vw, 768px"
+                className="object-cover"
+                priority
+              />
+            </div>
+          </div>
+
+          {/* DAY VIEW GRID */}
+          <div className="md:col-span-3">
+            <div className="mb-2 text-sm font-medium text-gray-700">Availability for the day</div>
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+              {dayLoading && (
+                Array.from({ length: 16 }).map((_, i) => (
+                  <div key={i} className="h-9 rounded-lg bg-gray-200 animate-pulse" />
+                ))
+              )}
+              {!dayLoading && daySlots?.map((s) => {
+                const label = `${String(s.hour).padStart(2, "0")}:00`;
+                const disabled = !s.available;
+                return (
+                  <button
+                    key={s.hour}
+                    type="button"
+                    onClick={() => {
+                      setHour(String(s.hour));
+                      setBasePerHour(s.price_per_hour);
+                      setEffPerHour(s.effective_price_per_hour ?? s.price_per_hour);
+                      setDiscountPct(s.active_offer?.discount_pct ?? null);
+                      setSlotStatus(s.available ? "available" : "conflicting");
+                    }}
+                    disabled={disabled}
+                    className={`h-9 rounded-lg border text-sm transition ${
+                      String(s.hour) === hour
+                        ? "bg-green-600 text-white border-green-700"
+                        : disabled
+                          ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                          : "bg-white hover:bg-green-50 border-gray-200"
+                    }`}
+                    title={disabled ? "Unavailable (Booked/Event)" : "Select this hour"}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* slot status message */}
@@ -273,7 +354,7 @@ export default function CourtBookingModal({
             </div>
           )}
 
-          {/* 🔹 price panel */}
+          {/* price panel */}
           {(basePerHour != null || effPerHour != null) && (
             <div className="md:col-span-3 rounded-lg border bg-gray-50 px-4 py-3">
               <div className="flex flex-wrap items-end justify-between gap-3">
@@ -343,16 +424,10 @@ export default function CourtBookingModal({
           </button>
           <button
             onClick={book}
-            disabled={
-              loading || slotStatus === "conflicting" || !date || !hour
-            }
+            disabled={loading || slotStatus === "conflicting" || !date || !hour}
             className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
           >
-            {slotStatus === "conflicting"
-              ? "Unavailable"
-              : loading
-              ? "Booking…"
-              : "Book"}
+            {slotStatus === "conflicting" ? "Unavailable" : loading ? "Booking…" : "Book"}
           </button>
         </div>
       </div>
