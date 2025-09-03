@@ -18,8 +18,9 @@
 
 ### Semester Project
 
-- Link to your production version: [**Production Version**](URL_TO_PRODUCTION_VERSION) <!-- Replace with actual URL -->
-- Link to your final report: [**Final Report**](URL_TO_FINAL_REPORT) <!-- Replace with actual URL -->
+- Link to the production version: [**Production Version**](https://vercel-deploy-sable-nu.vercel.app/)
+- Link to the final report: [**Final Report**](https://www.notion.so/CourtHaven-report-2631fce566ab80618593e80ca877c291?source=copy_link)
+
 
 ### Semester Assignments
 
