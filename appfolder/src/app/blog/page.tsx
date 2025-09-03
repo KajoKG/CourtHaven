@@ -6,8 +6,9 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Post = { id: string; title: string; body: string; createdAt?: string };
 type ApiList = { posts: Post[]; total: number; page: number; perPage: number; hasMore: boolean };
+type ApiError = { error?: string };
 
-const PER_PAGE = 6;
+const PER_PAGE = 6 as const;
 
 export default function BlogPage() {
   const [posts, setPosts] = useState<Post[]>([]);
@@ -29,11 +30,17 @@ export default function BlogPage() {
     setLoading(true);
     try {
       const res = await fetch(`/api/blog?page=${p}&perPage=${PER_PAGE}`, { cache: "no-store" });
-      const json: ApiList = await res.json();
-      if (!res.ok) throw new Error((json as any).error || "Failed");
-      setPosts(json.posts);
-      setTotal(json.total);
-      setPage(json.page);
+      const json = (await res.json()) as ApiList | ApiError;
+
+      if (!res.ok || !("posts" in json)) {
+        const msg = ("error" in json && json.error) ? json.error : "Failed";
+        throw new Error(msg);
+      }
+
+      const list = json as ApiList;
+      setPosts(list.posts);
+      setTotal(list.total);
+      setPage(list.page);
     } catch {
       setPosts([]);
       setTotal(0);
@@ -44,6 +51,7 @@ export default function BlogPage() {
 
   useEffect(() => {
     load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));

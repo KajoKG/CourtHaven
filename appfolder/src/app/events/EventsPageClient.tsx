@@ -48,11 +48,12 @@ export default function EventsPageClient() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const [sport, setSport] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [city, setCity] = useState("");
-  const [q, setQ] = useState("");
+  // filter state (samo vrijednosti; setteri nisu potrebni dok ne dodamo UI kontrole)
+  const [sport] = useState<string>("");
+  const [from]  = useState<string>("");
+  const [to]    = useState<string>("");
+  const [city]  = useState<string>("");
+  const [q]     = useState<string>("");
 
   const [offset, setOffset] = useState(0);
   const limit = 12;
@@ -89,11 +90,17 @@ export default function EventsPageClient() {
     setLoading(true);
     try {
       const res = await fetch(`/api/events/search?${qs}`, { cache: "no-store" });
-      const json: ApiResp = await res.json();
-      if (!res.ok) throw new Error((json as any).error || "Failed to load events");
-      setTotal(json.total);
-      setHasMore(json.hasMore);
-      setEvents((prev) => (reset ? json.events : [...prev, ...json.events]));
+      const json = (await res.json()) as ApiResp | { error?: string };
+
+      if (!res.ok || !("events" in json)) {
+        const msg = "error" in json && json.error ? json.error : "Failed to load events";
+        throw new Error(msg);
+      }
+
+      const data = json as ApiResp;
+      setTotal(data.total);
+      setHasMore(data.hasMore);
+      setEvents((prev) => (reset ? data.events : [...prev, ...data.events]));
     } catch (e) {
       console.error(e);
     } finally {
@@ -149,7 +156,7 @@ export default function EventsPageClient() {
                         {ev.sport}
                       </span>
                       <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">
-                        {(ev.teamsCount ?? 0)}
+                        {ev.teamsCount ?? 0}
                         {ev.capacity_teams ? `/${ev.capacity_teams}` : ""} teams
                       </span>
                     </div>

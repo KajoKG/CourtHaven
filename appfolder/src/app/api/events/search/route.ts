@@ -5,10 +5,47 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 export const dynamic = "force-dynamic";
 
 // helper za parsiranje brojčanih query parametara
-function n(v: string | null, def: number, { min = -Infinity, max = Infinity } = {}) {
+function n(
+  v: string | null,
+  def: number,
+  { min = -Infinity, max = Infinity }: { min?: number; max?: number } = {}
+): number {
   const x = v ? Number(v) : NaN;
   const y = Number.isFinite(x) ? x : def;
   return Math.min(max, Math.max(min, y));
+}
+
+/* ---------- Types ---------- */
+type EventRow = {
+  id: string;
+  title: string | null;
+  sport: string | null;
+  description: string | null;
+  start_at: string;
+  end_at: string;
+  team_size: number | null;
+  capacity_teams: number | null;
+};
+
+type CourtInfo = {
+  city: string | null;
+  address: string | null;
+  image_url: string | null;
+};
+
+type EventCourtRow = {
+  event_id: string;
+  court_id: string;
+  // Supabase join može vratiti objekt ili niz ovisno o relaciji
+  courts: CourtInfo | CourtInfo[];
+};
+
+type RsvpRow = { event_id: string };
+
+/* ---------- Helpers ---------- */
+function one<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
 export async function GET(req: Request) {
@@ -89,12 +126,13 @@ export async function GET(req: Request) {
     .in("event_id", eventIds);
   if (e2cErr) return NextResponse.json({ error: e2cErr.message }, { status: 500 });
 
-  const firstCourt = new Map<string, { city: string|null; address: string|null; image_url: string|null }>();
-  (e2c ?? []).forEach(row => {
-    const evId = row.event_id as string;
+  const e2cRows = (e2c ?? []) as EventCourtRow[];
+  const firstCourt = new Map<string, CourtInfo>();
+  e2cRows.forEach(row => {
+    const evId = row.event_id;
     if (!firstCourt.has(evId)) {
-      const c = (row as any).courts || {};
-      firstCourt.set(evId, { city: c.city ?? null, address: c.address ?? null, image_url: c.image_url ?? null });
+      const c = one(row.courts) ?? { city: null, address: null, image_url: null };
+      firstCourt.set(evId, { city: c.city, address: c.address, image_url: c.image_url });
     }
   });
 
@@ -109,14 +147,13 @@ export async function GET(req: Request) {
   }
 
   const teamsByEvent = new Map<string, number>();
-  for (const r of rsvps ?? []) {
-    const id = (r as any).event_id as string;
+  (rsvps ?? []).forEach((r) => {
+    const id = (r as RsvpRow).event_id;
     teamsByEvent.set(id, (teamsByEvent.get(id) ?? 0) + 1);
-  }
-
+  });
 
   // 6) rezultat
-  const events = evs.map(ev => {
+  const events = (evs as EventRow[]).map(ev => {
     const extra = firstCourt.get(ev.id) ?? { city: null, address: null, image_url: null };
     return {
       ...ev,

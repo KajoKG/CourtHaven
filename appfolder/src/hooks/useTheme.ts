@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from "react";
 
+type Theme = "light" | "dark";
+
+function readStoredTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+  const stored = localStorage.getItem("theme");
+  return stored === "dark" ? "dark" : "light";
+}
+
 export function useTheme() {
-  // 'system' = slijedi OS; 'light' ili 'dark' = forsirano
-  const [theme, setTheme] = useState<"light" | "dark">(
-    () => (typeof window !== "undefined" && (localStorage.getItem("theme") as any)) || "light"
-  );
+  // 'system' (OS) is not persisted here; default to 'light' when unset/SSR
+  const [theme, setTheme] = useState<Theme>(() => readStoredTheme());
 
   useEffect(() => {
     const root = document.documentElement;

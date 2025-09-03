@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import InviteFriends from "@/components/InviteFriends";
 
 type Booking = {
@@ -35,11 +34,18 @@ type MyEvent = {
   image_url: string | null;
 };
 
-export default function BookingsPage() {
-  const router = useRouter();
-  
-  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Error";
+  }
+}
 
+export default function BookingsPage() {
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [events, setEvents] = useState<MyEvent[]>([]);
@@ -87,12 +93,16 @@ export default function BookingsPage() {
     setErrB(null);
     try {
       const res = await fetch("/api/bookings", { method: "GET", credentials: "include" });
-      if (res.status === 401) { setIsAuthed(false); setLoadingB(false); return; }
-      const json = await res.json();
+      if (res.status === 401) {
+        setIsAuthed(false);
+        setLoadingB(false);
+        return;
+      }
+      const json = (await res.json().catch(() => ({}))) as { bookings?: Booking[]; error?: string };
       if (!res.ok) throw new Error(json?.error || "Failed to load bookings");
       setBookings(json.bookings || []);
-    } catch (e: any) {
-      setErrB(e?.message ?? "Error");
+    } catch (e: unknown) {
+      setErrB(getErrorMessage(e));
     } finally {
       setLoadingB(false);
     }
@@ -103,13 +113,20 @@ export default function BookingsPage() {
     setErrE(null);
     try {
       const res = await fetch("/api/events/my", { method: "GET", credentials: "include" });
-      if (res.status === 401) { setIsAuthed(false); setLoadingE(false); return; }
-      if (res.status === 404) { setEvents([]); return; }
-      const json = await res.json();
+      if (res.status === 401) {
+        setIsAuthed(false);
+        setLoadingE(false);
+        return;
+      }
+      if (res.status === 404) {
+        setEvents([]);
+        return;
+      }
+      const json = (await res.json().catch(() => ({}))) as { events?: MyEvent[]; error?: string };
       if (!res.ok) throw new Error(json?.error || "Failed to load events");
       setEvents(json.events || []);
-    } catch (e: any) {
-      setErrE(e?.message ?? "Error");
+    } catch (e: unknown) {
+      setErrE(getErrorMessage(e));
     } finally {
       setLoadingE(false);
     }
@@ -138,7 +155,6 @@ export default function BookingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-
   // OWNER → Cancel
   const doCancelBooking = async (id: string) => {
     setCancelLoading(true);
@@ -149,12 +165,12 @@ export default function BookingsPage() {
         credentials: "include",
         body: JSON.stringify({ id }),
       });
-      const json = await res.json().catch(() => ({}));
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json?.error || "Failed to cancel");
       await loadBookings();
       showToast("Booking canceled.");
-    } catch (e: any) {
-      showToast(e?.message ?? "Failed to cancel", 1800);
+    } catch (e: unknown) {
+      showToast(getErrorMessage(e) || "Failed to cancel", 1800);
     } finally {
       setCancelLoading(false);
       setCancelId(null);
@@ -169,12 +185,12 @@ export default function BookingsPage() {
         method: "DELETE",
         credentials: "include",
       });
-      const json = await res.json().catch(() => ({}));
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json?.error || "Failed to leave");
       await loadBookings();
       showToast("Left booking.");
-    } catch (e: any) {
-      showToast(e?.message ?? "Failed to leave", 1800);
+    } catch (e: unknown) {
+      showToast(getErrorMessage(e) || "Failed to leave", 1800);
     } finally {
       setLeavingId(null);
     }
@@ -188,12 +204,12 @@ export default function BookingsPage() {
         method: "DELETE",
         credentials: "include",
       });
-      const json = await res.json().catch(() => ({}));
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json?.error || "Failed to leave");
       setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
       showToast("Left event.");
-    } catch (e: any) {
-      showToast(e?.message ?? "Failed to leave", 1800);
+    } catch (e: unknown) {
+      showToast(getErrorMessage(e) || "Failed to leave", 1800);
     } finally {
       setLeavingId(null);
     }
@@ -208,204 +224,202 @@ export default function BookingsPage() {
         </div>
 
         {isAuthed === false && (
-  <div className="rounded-2xl border bg-white p-12 text-center">
-    <div className="mb-2 text-lg font-semibold text-gray-800">
-      You need to be logged in to view your bookings.
-    </div>
-    <p className="text-sm text-gray-600 mb-4">
-      Please log in to access your reservations and events.
-    </p>
-    <Link
-      href="/login"
-      className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-    >
-      Log in
-    </Link>
-  </div>
-)}
-{isAuthed !== false && (
-  <>
-
-        {/* COURT BOOKINGS */}
-        <section className="mb-10">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Upcoming court bookings</h2>
-            <Link href="/" className="text-sm text-gray-600 underline hover:text-gray-800">
-              Find a court
+          <div className="rounded-2xl border bg-white p-12 text-center">
+            <div className="mb-2 text-lg font-semibold text-gray-800">
+              You need to be logged in to view your bookings.
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Please log in to access your reservations and events.
+            </p>
+            <Link
+              href="/login"
+              className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+            >
+              Log in
             </Link>
           </div>
+        )}
+        {isAuthed !== false && (
+          <>
+            {/* COURT BOOKINGS */}
+            <section className="mb-10">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Upcoming court bookings</h2>
+                <Link href="/" className="text-sm text-gray-600 underline hover:text-gray-800">
+                  Find a court
+                </Link>
+              </div>
 
-          {errB && (
-            <div className="rounded-2xl border bg-white p-6 text-red-600">{errB}</div>
-          )}
+              {errB && (
+                <div className="rounded-2xl border bg-white p-6 text-red-600">{errB}</div>
+              )}
 
-          {loadingB && !errB && (
-            <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <li key={i} className="overflow-hidden rounded-2xl border bg-white">
-                  <div className="h-40 animate-pulse bg-gray-200" />
-                  <div className="space-y-2 p-4">
-                    <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
-                    <div className="h-3 w-1/2 animate-pulse rounded bg-gray-200" />
-                    <div className="h-3 w-3/4 animate-pulse rounded bg-gray-200" />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+              {loadingB && !errB && (
+                <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <li key={i} className="overflow-hidden rounded-2xl border bg-white">
+                      <div className="h-40 animate-pulse bg-gray-200" />
+                      <div className="space-y-2 p-4">
+                        <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
+                        <div className="h-3 w-1/2 animate-pulse rounded bg-gray-200" />
+                        <div className="h-3 w-3/4 animate-pulse rounded bg-gray-200" />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-          {!loadingB && !errB && bookings.length === 0 && (
-            <div className="rounded-2xl border bg-white p-12 text-center">
-              <div className="mb-1 text-lg font-semibold text-gray-800">No upcoming bookings</div>
-              <p className="text-sm text-gray-600 mb-4">
-                Find a court and make your first reservation.
-              </p>
-              <Link
-                href="/"
-                className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-              >
-                Book now
-              </Link>
-            </div>
-          )}
+              {!loadingB && !errB && bookings.length === 0 && (
+                <div className="rounded-2xl border bg-white p-12 text-center">
+                  <div className="mb-1 text-lg font-semibold text-gray-800">No upcoming bookings</div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Find a court and make your first reservation.
+                  </p>
+                  <Link
+                    href="/"
+                    className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                  >
+                    Book now
+                  </Link>
+                </div>
+              )}
 
-          {!loadingB && !errB && bookings.length > 0 && (
-            <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {bookings.map((b) => (
-                <li key={b.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={b.courts.image_url || "/images/courts/placeholder.jpg"}
-                    alt={b.courts.name}
-                    className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
-                  />
-                  <div className="space-y-2 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="line-clamp-1 text-lg font-semibold">{b.courts.name}</h3>
-                        <div className="text-sm text-gray-700">{fmtRange(b.start_at, b.end_at)}</div>
-                        <div className="text-sm text-gray-600">
-                          {b.courts.city} • {b.courts.address}
+              {!loadingB && !errB && bookings.length > 0 && (
+                <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {bookings.map((b) => (
+                    <li key={b.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={b.courts.image_url || "/images/courts/placeholder.jpg"}
+                        alt={b.courts.name}
+                        className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
+                      />
+                      <div className="space-y-2 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="line-clamp-1 text-lg font-semibold">{b.courts.name}</h3>
+                            <div className="text-sm text-gray-700">{fmtRange(b.start_at, b.end_at)}</div>
+                            <div className="text-sm text-gray-600">
+                              {b.courts.city} • {b.courts.address}
+                            </div>
+                          </div>
+                          <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{b.courts.sport}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2">
+                          {b.role === "owner" ? (
+                            <>
+                              <InviteFriends
+                                bookingId={b.id}
+                                triggerClassName="rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                                onSent={() => showToast("Invites sent")}
+                              />
+                              <button
+                                onClick={() => setCancelId(b.id)}
+                                className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            b.can_leave && b.invite_id ? (
+                              <button
+                                onClick={() => leaveBooking(b.invite_id!)}
+                                disabled={leavingId === b.invite_id}
+                                className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
+                              >
+                                {leavingId === b.invite_id ? "Leaving…" : "Leave"}
+                              </button>
+                            ) : null
+                          )}
                         </div>
                       </div>
-                      <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{b.courts.sport}</span>
-                    </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
-                    <div className="flex items-center gap-2 pt-2">
-                      {b.role === "owner" ? (
-                        <>
-                          <InviteFriends
-                            bookingId={b.id}
-                            triggerClassName="rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
-                            onSent={() => showToast("Invites sent")}
-                          />
-                          <button
-                            onClick={() => setCancelId(b.id)}
-                            className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50"
+            {/* UPCOMING EVENTS */}
+            <section>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Upcoming events</h2>
+                <Link href="/events" className="text-sm text-gray-600 underline hover:text-gray-800">
+                  Browse events
+                </Link>
+              </div>
+
+              {errE && (
+                <div className="rounded-2xl border bg-white p-6 text-red-600">{errE}</div>
+              )}
+
+              {loadingE && !errE && (
+                <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <li key={i} className="overflow-hidden rounded-2xl border bg-white">
+                      <div className="h-40 animate-pulse bg-gray-200" />
+                      <div className="space-y-2 p-4">
+                        <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
+                        <div className="h-3 w-1/2 animate-pulse rounded bg-gray-200" />
+                        <div className="h-3 w-3/4 animate-pulse rounded bg-gray-200" />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {!loadingE && !errE && events.length === 0 && (
+                <div className="rounded-2xl border bg-white p-12 text-center">
+                  <div className="mb-1 text-lg font-semibold text-gray-800">No upcoming events</div>
+                  <p className="text-sm text-gray-600">Join an event to see it here.</p>
+                </div>
+              )}
+
+              {!loadingE && !errE && events.length > 0 && (
+                <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {events.map((ev) => (
+                    <li key={ev.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={ev.image_url || "/images/events/placeholder.jpg"}
+                        alt={ev.title}
+                        className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
+                      />
+                      <div className="space-y-2 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="line-clamp-1 text-lg font-semibold">{ev.title}</h3>
+                          <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{ev.sport}</span>
+                        </div>
+                        <div className="text-sm text-gray-700">{fmtRange(ev.start_at, ev.end_at)}</div>
+                        {(ev.city || ev.address) && (
+                          <div className="text-sm text-gray-600">
+                            {ev.city || ""}{ev.city && ev.address ? " • " : ""}{ev.address || ""}
+                          </div>
+                        )}
+                        {ev.description && <p className="line-clamp-2 text-sm text-gray-600">{ev.description}</p>}
+                        <div className="flex items-center justify-between pt-2">
+                          <Link
+                            href={`/events/${ev.id}`}
+                            className="inline-flex items-center rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
                           >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        b.can_leave && b.invite_id ? (
+                            View details
+                          </Link>
                           <button
-                            onClick={() => leaveBooking(b.invite_id!)}
-                            disabled={leavingId === b.invite_id}
+                            onClick={() => leaveEvent(ev.id)}
+                            disabled={leavingId === ev.id}
                             className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
                           >
-                            {leavingId === b.invite_id ? "Leaving…" : "Leave"}
+                            {leavingId === ev.id ? "Leaving…" : "Leave"}
                           </button>
-                        ) : null
-                      )}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {/* UPCOMING EVENTS */}
-        <section>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Upcoming events</h2>
-            <Link href="/events" className="text-sm text-gray-600 underline hover:text-gray-800">
-              Browse events
-            </Link>
-          </div>
-
-          {errE && (
-            <div className="rounded-2xl border bg-white p-6 text-red-600">{errE}</div>
-          )}
-
-          {loadingE && !errE && (
-            <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <li key={i} className="overflow-hidden rounded-2xl border bg-white">
-                  <div className="h-40 animate-pulse bg-gray-200" />
-                  <div className="space-y-2 p-4">
-                    <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
-                    <div className="h-3 w-1/2 animate-pulse rounded bg-gray-200" />
-                    <div className="h-3 w-3/4 animate-pulse rounded bg-gray-200" />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {!loadingE && !errE && events.length === 0 && (
-            <div className="rounded-2xl border bg-white p-12 text-center">
-              <div className="mb-1 text-lg font-semibold text-gray-800">No upcoming events</div>
-              <p className="text-sm text-gray-600">Join an event to see it here.</p>
-            </div>
-          )}
-
-          {!loadingE && !errE && events.length > 0 && (
-            <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {events.map((ev) => (
-                <li key={ev.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={ev.image_url || "/images/events/placeholder.jpg"}
-                    alt={ev.title}
-                    className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
-                  />
-                  <div className="space-y-2 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="line-clamp-1 text-lg font-semibold">{ev.title}</h3>
-                      <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">{ev.sport}</span>
-                    </div>
-                    <div className="text-sm text-gray-700">{fmtRange(ev.start_at, ev.end_at)}</div>
-                    {(ev.city || ev.address) && (
-                      <div className="text-sm text-gray-600">
-                        {ev.city || ""}{ev.city && ev.address ? " • " : ""}{ev.address || ""}
+                        </div>
                       </div>
-                    )}
-                    {ev.description && <p className="line-clamp-2 text-sm text-gray-600">{ev.description}</p>}
-                    <div className="flex items-center justify-between pt-2">
-                      <Link
-                        href={`/events/${ev.id}`}
-                        className="inline-flex items-center rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
-                      >
-                        View details
-                      </Link>
-                      <button
-                        onClick={() => leaveEvent(ev.id)}
-                        disabled={leavingId === ev.id}
-                        className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
-                      >
-                        {leavingId === ev.id ? "Leaving…" : "Leave"}
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        </>
-)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
+        )}
       </div>
 
       {/* Toast */}

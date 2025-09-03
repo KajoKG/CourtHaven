@@ -4,23 +4,35 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 export const dynamic = "force-dynamic";
 
+type RSVPTeamPayload = {
+  partner_full_name?: string;
+  member2_full_name?: string;
+  member3_full_name?: string;
+};
+
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const supabase = createRouteHandlerClient({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const body = await req.json().catch(() => ({}));
+  const body = (await req.json().catch(() => ({}))) as Partial<{
+    partner_full_name: string;
+    member2_full_name: string;
+    member3_full_name: string;
+  }>;
+
   // dohvat eventa radi team_size/capacity
   const { data: ev, error: evErr } = await supabase
     .from("events")
     .select("id,sport,team_size,capacity_teams")
-    .eq("id", params.id).single();
+    .eq("id", params.id)
+    .single();
   if (evErr || !ev) return NextResponse.json({ error: evErr?.message ?? "Event not found" }, { status: 404 });
 
   const teamSize = ev.team_size ?? (ev.sport === "padel" ? 2 : ev.sport === "basketball" ? 3 : 1);
 
   // validacija imena po team_size
-  let payload: Record<string, any> = {};
+  const payload: RSVPTeamPayload = {};
   if (teamSize === 2) {
     const partner = String(body?.partner_full_name || "").trim();
     if (!partner) return NextResponse.json({ error: "Please enter your partner’s full name." }, { status: 400 });
@@ -35,13 +47,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // jesam li već prijavljen
   const { data: mine } = await supabase
-    .from("event_rsvps").select("id").eq("event_id", params.id).eq("user_id", user.id).maybeSingle();
+    .from("event_rsvps")
+    .select("id")
+    .eq("event_id", params.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
   if (mine) return NextResponse.json({ error: "Already joined" }, { status: 409 });
 
   // kapacitet
   if (ev.capacity_teams && ev.capacity_teams > 0) {
     const { count } = await supabase
-      .from("event_rsvps").select("*", { head: true, count: "exact" })
+      .from("event_rsvps")
+      .select("*", { head: true, count: "exact" })
       .eq("event_id", params.id);
     if ((count ?? 0) >= ev.capacity_teams) {
       return NextResponse.json({ error: "Event is full" }, { status: 409 });

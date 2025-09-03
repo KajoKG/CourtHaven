@@ -10,6 +10,40 @@ function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+/* ---------- Types ---------- */
+type CourtRow = {
+  id: string;
+  name: string | null;
+  sport: string | null;
+  address: string | null;
+  city: string | null;
+  description: string | null;
+  image_url: string | null;
+  price_per_hour: number | null;
+};
+
+type BookingRow = {
+  court_id: string;
+  start_at: string;
+  end_at: string;
+};
+
+type EventCourtRow = {
+  event_id: string;
+  court_id: string;
+};
+
+type WindowRange = {
+  event_id: string;
+  start_at: string;
+  end_at: string;
+};
+
+type OutputRow = CourtRow & {
+  effective_price_per_hour: number | null;
+  active_offer: null; // ako kasnije dodaješ ponudu, promijeni u odgovarajući tip
+};
+
 export async function GET(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
   const { searchParams } = new URL(req.url);
@@ -35,7 +69,8 @@ export async function GET(req: Request) {
     .eq("sport", sport);
   if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
 
-  const courtIds = (courts ?? []).map((c) => c.id);
+  const courtList = (courts ?? []) as CourtRow[];
+  const courtIds = courtList.map((c) => c.id);
   if (!courtIds.length) return NextResponse.json({ available: [], conflicting: [] });
 
   // 2) Bookings overlapping the requested slot
@@ -53,8 +88,11 @@ export async function GET(req: Request) {
     .select("event_id,court_id")
     .in("court_id", courtIds);
 
-  const eventIds = Array.from(new Set((ec ?? []).map((x) => x.event_id as string)));
-  let windows: Array<{ event_id: string; start_at: string; end_at: string }> = [];
+  const eventIds = Array.from(
+    new Set(((ec ?? []) as EventCourtRow[]).map((x) => x.event_id))
+  );
+
+  let windows: WindowRange[] = [];
   if (eventIds.length) {
     // windows koji overlapaju slot
     const { data: win } = await supabase
@@ -63,7 +101,7 @@ export async function GET(req: Request) {
       .in("event_id", eventIds)
       .lt("start_at", end.toISOString())
       .gt("end_at", start.toISOString());
-    if (win) windows = win;
+    if (win) windows = win as WindowRange[];
 
     // whole-event rasponi (ako nema windows-a)
     const { data: evs } = await supabase
@@ -75,37 +113,37 @@ export async function GET(req: Request) {
 
     if (evs && evs.length) {
       windows.push(
-        ...evs.map((e) => ({ event_id: e.id, start_at: e.start_at, end_at: e.end_at }))
+        ...evs.map((e) => ({ event_id: e.id as string, start_at: e.start_at as string, end_at: e.end_at as string }))
       );
     }
   }
 
   // 4) Build conflict maps
   const bookingsByCourt = new Map<string, { start_at: string; end_at: string }[]>();
-  (bookings ?? []).forEach((b) => {
-    const arr = bookingsByCourt.get(b.court_id as string) || [];
+  ((bookings ?? []) as BookingRow[]).forEach((b) => {
+    const arr = bookingsByCourt.get(b.court_id) || [];
     arr.push({ start_at: b.start_at, end_at: b.end_at });
-    bookingsByCourt.set(b.court_id as string, arr);
+    bookingsByCourt.set(b.court_id, arr);
   });
 
   const eventIdsByCourt = new Map<string, string[]>();
-  (ec ?? []).forEach((row) => {
-    const arr = eventIdsByCourt.get(row.court_id as string) || [];
-    arr.push(row.event_id as string);
-    eventIdsByCourt.set(row.court_id as string, arr);
+  ((ec ?? []) as EventCourtRow[]).forEach((row) => {
+    const arr = eventIdsByCourt.get(row.court_id) || [];
+    arr.push(row.event_id);
+    eventIdsByCourt.set(row.court_id, arr);
   });
 
   const windowsByEvent = new Map<string, { start_at: string; end_at: string }[]>();
-  windows.forEach((w) => {
+  (windows as WindowRange[]).forEach((w) => {
     const arr = windowsByEvent.get(w.event_id) || [];
     arr.push({ start_at: w.start_at, end_at: w.end_at });
     windowsByEvent.set(w.event_id, arr);
   });
 
-  const available: any[] = [];
-  const conflicting: any[] = [];
+  const available: OutputRow[] = [];
+  const conflicting: OutputRow[] = [];
 
-  for (const c of courts ?? []) {
+  for (const c of courtList) {
     let conflict = false;
 
     // booking overlap
@@ -129,7 +167,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const row = {
+    const row: OutputRow = {
       ...c,
       effective_price_per_hour: c.price_per_hour,
       active_offer: null,

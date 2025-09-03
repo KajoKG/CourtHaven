@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense, ComponentType } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
@@ -36,7 +36,7 @@ function suggestSlotForOffer(o: Offer): { date: string; hour: string } | null {
   const end = new Date(o.ends_at);
   if (now >= end) return null;
 
-  let day = new Date(now);
+  const day = new Date(now);
   day.setHours(0, 0, 0, 0);
 
   const hs = o.valid_hour_start ?? 7;
@@ -105,8 +105,8 @@ export default function OffersPageClient() {
     setLoading(true);
     try {
       const res = await fetch(`/api/offers/search?${qs}`, { cache: "no-store" });
-      const json: ApiResp = await res.json();
-      if (!res.ok) throw new Error((json as any).error || "Failed to load offers");
+      const json = (await res.json()) as ApiResp & { error?: string };
+      if (!res.ok) throw new Error(json.error || "Failed to load offers");
       setTotal(json.total);
       setHasMore(json.hasMore);
       setOffers((prev) => (reset ? json.offers : [...prev, ...json.offers]));
@@ -168,7 +168,11 @@ export default function OffersPageClient() {
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">Sort</label>
-            <select value={sort} onChange={(e) => setSort(e.target.value as any)} className="w-full rounded-lg border p-2.5">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as "endsSoon" | "discount" | "price")}
+              className="w-full rounded-lg border p-2.5"
+            >
               <option value="endsSoon">Ending soon</option>
               <option value="discount">Biggest discount</option>
               <option value="price">Lowest price</option>
@@ -264,6 +268,13 @@ export default function OffersPageClient() {
   );
 }
 
+type BookingModalProps = {
+  court: Court;
+  initialDate?: string | null;
+  initialHour?: string | null;
+  onClose: (changed?: boolean) => void;
+};
+
 function LazyBookingModal({
   court,
   prefill,
@@ -273,12 +284,19 @@ function LazyBookingModal({
   prefill: { date: string; hour: string } | null;
   onClose: (changed?: boolean) => void;
 }) {
-  const [Comp, setComp] = useState<any>(null);
+  const [Comp, setComp] = useState<ComponentType<BookingModalProps> | null>(null);
   useEffect(() => {
-    import("@/components/CourtBookingModal").then((m) => setComp(() => m.default));
+    import("@/components/CourtBookingModal").then((m) =>
+      setComp(() => m.default as ComponentType<BookingModalProps>)
+    );
   }, []);
   if (!Comp) return null;
-  return <Comp court={court} initialDate={prefill?.date} initialHour={prefill?.hour} onClose={onClose} />;
+  return (
+    <Comp
+      court={court}
+      initialDate={prefill?.date}
+      initialHour={prefill?.hour}
+      onClose={onClose}
+    />
+  );
 }
-
-

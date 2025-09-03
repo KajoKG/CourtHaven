@@ -14,6 +14,33 @@ function num(v: string | null, def: number) {
   return Number.isFinite(x) ? x : def;
 }
 
+/* ---------- Types ---------- */
+type CourtInfo = {
+  id: string;
+  name: string | null;
+  sport: string | null;
+  address: string | null;
+  city: string | null;
+  image_url: string | null;
+};
+
+type OfferJoined = {
+  id: string;
+  title: string | null;
+  description: string | null;
+  discount_pct: number | null;
+  original_price: number | null;
+  price: number | null;
+  starts_at: string;
+  ends_at: string;
+  featured: boolean | null;
+  valid_hour_start: number | null;
+  valid_hour_end: number | null;
+  // Supabase join preko foreign key-a vraća jedan court objekt,
+  // ali tipiziramo tolerantno ako bi se vratio niz.
+  courts: CourtInfo | CourtInfo[];
+};
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
@@ -29,11 +56,14 @@ export async function GET(req: Request) {
 
   let base = supabase
     .from("offers")
-    .select(`
+    .select(
+      `
       id, title, description, discount_pct, original_price, price, starts_at, ends_at, featured,
       valid_hour_start, valid_hour_end,
       courts!inner ( id, name, sport, address, city, image_url )
-    `, { count: "exact" })
+    `,
+      { count: "exact" }
+    )
     .lte("starts_at", nowISO)
     .gte("ends_at", nowISO);
 
@@ -44,20 +74,26 @@ export async function GET(req: Request) {
   const { data, error, count } = await base;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const items = (data ?? []).map((row: any) => ({
-    id: row.id,
-    title: row.title,
-    description: row.description,
-    discount_pct: row.discount_pct,
-    original_price: row.original_price,
-    price: row.price,
-    starts_at: row.starts_at,
-    ends_at: row.ends_at,
-    featured: row.featured,
-    valid_hour_start: row.valid_hour_start ?? null,
-    valid_hour_end: row.valid_hour_end ?? null,
-    court: row.courts, // { id,name,sport,address,city,image_url }
-  }));
+  const rows = ((data ?? []) as unknown) as OfferJoined[];
+
+  const items = rows.map((row) => {
+    const court = Array.isArray(row.courts) ? row.courts[0] ?? null : row.courts ?? null;
+
+    return {
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      discount_pct: row.discount_pct,
+      original_price: row.original_price,
+      price: row.price,
+      starts_at: row.starts_at,
+      ends_at: row.ends_at,
+      featured: row.featured,
+      valid_hour_start: row.valid_hour_start ?? null,
+      valid_hour_end: row.valid_hour_end ?? null,
+      court, // { id,name,sport,address,city,image_url } | null
+    };
+  });
 
   items.sort((a, b) => {
     if (sort === "discount") return (b.discount_pct ?? 0) - (a.discount_pct ?? 0);

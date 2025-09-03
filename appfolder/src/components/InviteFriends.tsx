@@ -7,6 +7,19 @@ type Friend = {
   user: { id: string; full_name: string | null; email: string | null; avatar_url: string | null };
 };
 
+type FriendsResp = { error?: unknown; friends?: Friend[] };
+type InvitesResp = { error?: unknown; invites?: { id: string }[] };
+
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Error";
+  }
+}
+
 export default function InviteFriends({
   bookingId,
   triggerClassName = "rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50",
@@ -27,22 +40,30 @@ export default function InviteFriends({
     setLoading(true);
     try {
       const res = await fetch("/api/friends", { cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load friends");
+      const json = (await res.json()) as FriendsResp;
+      if (!res.ok) {
+        const errMsg =
+          json && typeof json === "object" && "error" in json
+            ? getErrorMessage(json.error)
+            : "Failed to load friends";
+        throw new Error(errMsg);
+      }
       setFriends(json.friends || []);
-    } catch (e: any) {
-      setMsg(e?.message || "Error");
+    } catch (e: unknown) {
+      setMsg(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => {
+    if (open) load();
+  }, [open]);
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return friends;
-    return friends.filter(f => {
+    return friends.filter((f) => {
       const name = (f.user.full_name || "").toLowerCase();
       const email = (f.user.email || "").toLowerCase();
       return name.includes(q) || email.includes(q);
@@ -65,16 +86,23 @@ export default function InviteFriends({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ booking_id: bookingId, invitee_ids }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to send invites");
-      setMsg(`Invites sent ✓ (${json.invites?.length ?? invitee_ids.length})`);
+      const json = (await res.json()) as InvitesResp;
+      if (!res.ok) {
+        const errMsg =
+          json && typeof json === "object" && "error" in json
+            ? getErrorMessage(json.error)
+            : "Failed to send invites";
+        throw new Error(errMsg);
+      }
+      const count = Array.isArray(json.invites) ? json.invites.length : invitee_ids.length;
+      setMsg(`Invites sent ✓ (${count})`);
       setTimeout(() => {
         setOpen(false);
         setPicked({});
         if (onSent) onSent();
       }, 800);
-    } catch (e: any) {
-      setMsg(e?.message || "Error");
+    } catch (e: unknown) {
+      setMsg(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -92,7 +120,9 @@ export default function InviteFriends({
           <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b px-5 py-3">
               <h3 className="text-lg font-semibold">Invite friends</h3>
-              <button className="rounded px-2 py-1 text-sm hover:bg-gray-100" onClick={() => setOpen(false)}>✕</button>
+              <button className="rounded px-2 py-1 text-sm hover:bg-gray-100" onClick={() => setOpen(false)}>
+                ✕
+              </button>
             </div>
 
             <div className="p-5 space-y-4">
@@ -132,9 +162,7 @@ export default function InviteFriends({
                             type="checkbox"
                             className="h-4 w-4"
                             checked={checked}
-                            onChange={() =>
-                              setPicked((p) => ({ ...p, [id]: !p[id] }))
-                            }
+                            onChange={() => setPicked((p) => ({ ...p, [id]: !p[id] }))}
                           />
                         </li>
                       );
@@ -144,16 +172,22 @@ export default function InviteFriends({
               </div>
 
               {msg && (
-                <div className={`rounded border px-3 py-2 text-sm ${msg.includes("✓")
-                  ? "border-green-200 bg-green-50 text-green-700"
-                  : "border-red-200 bg-red-50 text-red-700"}`}>
+                <div
+                  className={`rounded border px-3 py-2 text-sm ${
+                    msg.includes("✓")
+                      ? "border-green-200 bg-green-50 text-green-700"
+                      : "border-red-200 bg-red-50 text-red-700"
+                  }`}
+                >
                   {msg}
                 </div>
               )}
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
-              <button className="rounded-lg px-3 py-1.5 text-sm hover:bg-gray-100" onClick={() => setOpen(false)}>Close</button>
+              <button className="rounded-lg px-3 py-1.5 text-sm hover:bg-gray-100" onClick={() => setOpen(false)}>
+                Close
+              </button>
               <button
                 className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
                 onClick={send}

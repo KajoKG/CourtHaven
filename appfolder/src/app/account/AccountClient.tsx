@@ -20,15 +20,34 @@ type Friend   = { friendship_id: string; since: string; user: UserLite };
 type Incoming = { id: string; from: UserLite; created_at: string };
 type Outgoing = { id: string; to: UserLite; created_at: string };
 
+/** Payload koji ti backend šalje za notificiranje o inviteovima */
+type InvitePayload = {
+  invitee_name?: string | null;
+  invitee_email?: string | null;
+  court_name?: string | null;
+  start_at?: string | null;
+};
+
 type Notification = {
   id: string;
   type: "invite_accepted" | "invite_left";
-  payload: any;
+  payload: InvitePayload;
   created_at: string;
   read_at: string | null;
 };
 
+/** Booking/Invite strukture koje se koriste u "Booking invites" sekciji */
+type Court = { id: string; name?: string | null; city?: string | null; address?: string | null };
+type Booking = { id: string; start_at?: string | null; courts?: Court[] | Court | null };
+type BookingInvite = { id: string; bookings?: Booking[] | Booking | null };
+
 /* ---------- Helpers ---------- */
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try { return JSON.stringify(e); } catch { return "Error"; }
+}
+
 async function compressImage(file: File, maxSide = 512, quality = 0.82): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
   const bmp = await createImageBitmap(file);
@@ -40,14 +59,14 @@ async function compressImage(file: File, maxSide = 512, quality = 0.82): Promise
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(bmp, 0, 0, w, h);
   const blob: Blob = await new Promise((resolve) =>
-    canvas.toBlob((b) => resolve(b as Blob), "image/jpeg", quality)
+    canvas.toBlob((b) => resolve((b as Blob) ?? new Blob()), "image/jpeg", quality)
   );
   return new File([blob], (file.name.replace(/\.\w+$/, "") || "avatar") + ".jpg", { type: "image/jpeg" });
 }
 
-// flatten helper: uzmi prvi element ako je array
-function one<T = any>(v: any): T | null {
-  if (v == null) return null as any;
+/** Uzmi prvi element ako je array, inače vrati vrijednost; zadrži tipove */
+function one<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null;
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
@@ -57,7 +76,6 @@ export default function AccountClient() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
-
 
   const [fn, setFn] = useState("");
   const [ln, setLn] = useState("");
@@ -78,7 +96,7 @@ export default function AccountClient() {
   const [friendsBusy, setFriendsBusy] = useState(false);
 
   /* ---------- Booking invites state ---------- */
-  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<BookingInvite[]>([]);
   const [invBusy, setInvBusy] = useState(false);
 
   /* ---------- Notifications state ---------- */
@@ -87,61 +105,44 @@ export default function AccountClient() {
 
   const [toast, setToast] = useState<string | null>(null);
 
-  /* ---------- Load profile ---------- */
-  const loadProfile = async () => {
-    setLoading(true); setErr(null);
-    try {
-      const res = await fetch("/api/account/profile", { cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load profile");
-      const p = json.profile as Profile;
-      setProfile(p);
-      setFn(p.first_name || ""); setLn(p.last_name || "");
-      setFull(p.full_name || ""); setBio(p.bio || "");
-      setAvatarUrl(p.avatar_url);
-    } catch (e: any) {
-      setErr(e.message ?? "Error");
-    } finally { setLoading(false); }
-  };
-useEffect(() => {
-  (async () => {
-    setLoading(true);           // ⬅️ pobrini se da krene u "loading"
-    setErr(null);
-    try {
-      const res = await fetch("/api/account/profile", {
-        cache: "no-store",
-        credentials: "include",
-      });
+  /* ---------- Load profile on mount ---------- */
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      try {
+        const res = await fetch("/api/account/profile", {
+          cache: "no-store",
+          credentials: "include",
+        });
 
-      if (res.status === 401) {
+        if (res.status === 401) {
+          setIsAuthed(false);
+          setProfile(null);
+          return;
+        }
+
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error((json as { error?: string })?.error || "Failed to load profile");
+        }
+
+        const p = json.profile as Profile;
+        setIsAuthed(true);
+        setProfile(p);
+        setFn(p.first_name || "");
+        setLn(p.last_name || "");
+        setFull(p.full_name || "");
+        setBio(p.bio || "");
+        setAvatarUrl(p.avatar_url);
+      } catch (e: unknown) {
         setIsAuthed(false);
-        setProfile(null);
-        return;
+        setErr(getErrorMessage(e));
+      } finally {
+        setLoading(false);
       }
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to load profile");
-      }
-
-      const p = json.profile as Profile;
-      setIsAuthed(true);
-      setProfile(p);
-      setFn(p.first_name || "");
-      setLn(p.last_name || "");
-      setFull(p.full_name || "");
-      setBio(p.bio || "");
-      setAvatarUrl(p.avatar_url);
-    } catch (e: any) {
-      setIsAuthed(false);
-      setErr(e?.message ?? "Error");
-    } finally {
-      setLoading(false);        // ⬅️ KLJUČNO: sad se UI odblokira
-    }
-  })();
-}, []);
-
-
+    })();
+  }, []);
 
   /* ---------- Save profile ---------- */
   const save = async () => {
@@ -159,10 +160,10 @@ useEffect(() => {
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to save");
-      setProfile(json.profile);
-    } catch (e: any) {
-      alert(e.message ?? "Save failed");
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to save");
+      setProfile(json.profile as Profile);
+    } catch (e: unknown) {
+      alert(getErrorMessage(e) || "Save failed");
     } finally { setBusy(false); }
   };
 
@@ -174,19 +175,18 @@ useEffect(() => {
       const form = new FormData(); form.append("file", small);
       const res = await fetch("/api/account/avatar", { method: "POST", body: form });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Upload failed");
-      setAvatarUrl(json.url);
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Upload failed");
+      setAvatarUrl((json as { url: string }).url);
     } finally { setAvatarBusy(false); }
   };
 
   /* ---------- Change password ---------- */
   const changePassword = async () => {
-    if (!pw || pw.length < 6) { 
-      alert("Password must be at least 6 characters."); 
-      return; 
+    if (!pw || pw.length < 6) {
+      alert("Password must be at least 6 characters.");
+      return;
     }
 
-    // ✅ confirmation
     const ok = window.confirm("Are you sure you want to change your password?");
     if (!ok) return;
 
@@ -197,30 +197,30 @@ useEffect(() => {
         body: JSON.stringify({ new_password: pw }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to change password");
-      setPw(""); 
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to change password");
+      setPw("");
       alert("Password updated.");
-    } catch (e: any) { 
-      alert(e.message ?? "Failed to change password"); 
-    } finally { 
-      setBusy(false); 
+    } catch (e: unknown) {
+      alert(getErrorMessage(e) || "Failed to change password");
+    } finally {
+      setBusy(false);
     }
   };
-  /* ---------- Friends: load + actions ---------- */
 
+  /* ---------- Friends: load + actions ---------- */
   const loadFriends = async () => {
     try {
       const res = await fetch("/api/friends", { cache: "no-store" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load friends");
-      setFriends(json.friends || []);
-      setIncoming(json.incoming || []);
-      setOutgoing(json.outgoing || []);
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to load friends");
+      setFriends((json as { friends?: Friend[] }).friends || []);
+      setIncoming((json as { incoming?: Incoming[] }).incoming || []);
+      setOutgoing((json as { outgoing?: Outgoing[] }).outgoing || []);
     } catch {
       /* silent */
     }
   };
-  useEffect(() => { if (!loading) loadFriends(); /* eslint-disable-next-line */ }, [loading]);
+  useEffect(() => { if (!loading) void loadFriends(); /* eslint-disable-next-line */ }, [loading]);
 
   const sendFriendRequest = async () => {
     if (!friendEmail) return;
@@ -231,12 +231,12 @@ useEffect(() => {
         body: JSON.stringify({ email: friendEmail }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to send");
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to send");
       setFriendEmail("");
       setToast("Request sent"); setTimeout(() => setToast(null), 1200);
-      loadFriends();
-    } catch (e: any) {
-      setToast(e.message ?? "Error"); setTimeout(() => setToast(null), 1800);
+      void loadFriends();
+    } catch (e: unknown) {
+      setToast(getErrorMessage(e) || "Error"); setTimeout(() => setToast(null), 1800);
     } finally { setFriendsBusy(false); }
   };
 
@@ -248,10 +248,10 @@ useEffect(() => {
         body: JSON.stringify({ action }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed");
-      loadFriends();
-    } catch (e: any) {
-      setToast(e.message ?? "Error"); setTimeout(() => setToast(null), 1800);
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed");
+      void loadFriends();
+    } catch (e: unknown) {
+      setToast(getErrorMessage(e) || "Error"); setTimeout(() => setToast(null), 1800);
     } finally { setFriendsBusy(false); }
   };
 
@@ -260,10 +260,10 @@ useEffect(() => {
     try {
       const res = await fetch(`/api/friends/${id}`, { method: "DELETE" });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Failed to remove");
-      loadFriends();
-    } catch (e: any) {
-      setToast(e.message ?? "Error"); setTimeout(() => setToast(null), 1800);
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to remove");
+      void loadFriends();
+    } catch (e: unknown) {
+      setToast(getErrorMessage(e) || "Error"); setTimeout(() => setToast(null), 1800);
     } finally { setFriendsBusy(false); }
   };
 
@@ -272,10 +272,10 @@ useEffect(() => {
     try {
       const res = await fetch("/api/bookings/invites", { cache: "no-store" });
       const json = await res.json();
-      if (res.ok) setPendingInvites(json.invites || []);
+      if (res.ok) setPendingInvites((json as { invites?: BookingInvite[] }).invites || []);
     } catch { /* noop */ }
   };
-  useEffect(() => { if (!loading) loadInvites(); /* eslint-disable-next-line */ }, [loading]);
+  useEffect(() => { if (!loading) void loadInvites(); /* eslint-disable-next-line */ }, [loading]);
 
   const respondInvite = async (id: string, action: "accept" | "decline") => {
     setInvBusy(true);
@@ -286,10 +286,10 @@ useEffect(() => {
         body: JSON.stringify({ action }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Failed");
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed");
       await loadInvites();
-    } catch (e:any) {
-      setToast(e.message ?? "Error");
+    } catch (e: unknown) {
+      setToast(getErrorMessage(e) || "Error");
       setTimeout(() => setToast(null), 1500);
     } finally { setInvBusy(false); }
   };
@@ -299,13 +299,13 @@ useEffect(() => {
     try {
       const res = await fetch("/api/notifications", { cache: "no-store" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to load notifications");
-      setNotifs(json.notifications || []);
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to load notifications");
+      setNotifs((json as { notifications?: Notification[] }).notifications || []);
     } catch {
       /* silent */
     }
   };
-  useEffect(() => { if (!loading) loadNotifs(); /* eslint-disable-next-line */ }, [loading]);
+  useEffect(() => { if (!loading) void loadNotifs(); /* eslint-disable-next-line */ }, [loading]);
 
   const markNotifRead = async (id: string) => {
     setNotifBusy(true);
@@ -341,22 +341,21 @@ useEffect(() => {
       <div className="mx-auto max-w-3xl px-4 py-10">
         <h1 className="mb-6 text-3xl font-bold text-gray-900">Account</h1>
         {isAuthed === false && (
-  <div className="rounded-2xl border bg-white p-12 text-center">
-    <div className="mb-2 text-lg font-semibold text-gray-800">
-      You need to be logged in to view your account.
-    </div>
-    <p className="text-sm text-gray-600 mb-4">
-      Please log in to manage your profile, friends, and bookings.
-    </p>
-    <Link
-      href="/login"
-      className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-    >
-      Log in
-    </Link>
-  </div>
-)}
-
+          <div className="rounded-2xl border bg-white p-12 text-center">
+            <div className="mb-2 text-lg font-semibold text-gray-800">
+              You need to be logged in to view your account.
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Please log in to manage your profile, friends, and bookings.
+            </p>
+            <Link
+              href="/login"
+              className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+            >
+              Log in
+            </Link>
+          </div>
+        )}
 
         {loading && <p>Loading…</p>}
         {err && <p className="text-red-600">{err}</p>}
@@ -383,7 +382,7 @@ useEffect(() => {
                       const f = e.target.files?.[0];
                       if (f) {
                         try { await uploadAvatar(f); }
-                        catch (e: any) { alert(e.message ?? "Upload error"); }
+                        catch (e) { alert(getErrorMessage(e) || "Upload error"); }
                         finally { if (fileRef.current) fileRef.current.value = ""; }
                       }
                     }}
@@ -626,9 +625,9 @@ useEffect(() => {
                 <p className="text-sm text-gray-600">No pending invites.</p>
               ) : (
                 <ul className="space-y-3">
-                  {pendingInvites.map((it: any) => {
-                    const booking = one(it.bookings) as any;
-                    const court = one(booking?.courts) as any;
+                  {pendingInvites.map((it) => {
+                    const booking = one<Booking>(it.bookings);
+                    const court = one<Court>(booking?.courts ?? null);
                     const courtName = court?.name || "Court";
                     const when = booking?.start_at ? new Date(booking.start_at).toLocaleString() : "";
                     const whereBits = [court?.city, court?.address].filter(Boolean).join(" • ");
@@ -675,5 +674,5 @@ useEffect(() => {
         )}
       </div>
     </main>
-  ); 
+  );
 }

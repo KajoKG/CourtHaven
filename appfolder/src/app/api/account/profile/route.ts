@@ -1,8 +1,18 @@
+// ./src/app/api/account/profile/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 export const dynamic = "force-dynamic";
+
+// ✨ Dodaj tip za payload umjesto `any`
+type ProfileUpdatePayload = {
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+};
 
 export async function GET() {
   const supabase = createRouteHandlerClient({ cookies });
@@ -24,8 +34,10 @@ export async function PUT(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const body = await req.json();
-  const payload: any = {
+  // 👇 Tipiziramo body bez `any`
+  const body = (await req.json()) as Partial<Record<keyof ProfileUpdatePayload, string | null>>;
+
+  const payload: ProfileUpdatePayload = {
     first_name: body.first_name ?? null,
     last_name: body.last_name ?? null,
     full_name: body.full_name ?? null,

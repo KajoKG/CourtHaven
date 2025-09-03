@@ -78,7 +78,7 @@ export async function GET(
   if (ecErr) return NextResponse.json({ error: ecErr.message }, { status: 500 });
 
   const eventIds = Array.from(new Set((ec ?? []).map((x) => x.event_id as string)));
-  let eventRanges: Array<{ start_at: string; end_at: string }> = [];
+  const eventRanges: Array<{ start_at: string; end_at: string }> = [];
 
   if (eventIds.length) {
     // Granular windows koji overlapaju taj dan

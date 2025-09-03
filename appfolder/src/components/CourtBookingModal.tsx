@@ -32,6 +32,19 @@ type DaySlot = {
   } | null;
 };
 
+// Minimalni tipovi koje koristimo iz /api/courts/search
+type CourtsSearchItem = {
+  id: string;
+  price_per_hour: number | null;
+  effective_price_per_hour: number | null;
+  active_offer: { discount_pct: number | null } | null;
+};
+type CourtsSearchResponse = {
+  available: CourtsSearchItem[];
+  conflicting: CourtsSearchItem[];
+  error?: string;
+};
+
 function todayISO() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -90,9 +103,9 @@ export default function CourtBookingModal({
     setDayLoading(true);
     try {
       const res = await fetch(`/api/courts/${court.id}/day?date=${encodeURIComponent(d)}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to load day view");
-      setDaySlots(json.slots as DaySlot[]);
+      const json: { slots: DaySlot[] } = await res.json();
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to load day view");
+      setDaySlots(json.slots);
     } catch {
       setDaySlots(null);
     } finally {
@@ -129,15 +142,15 @@ export default function CourtBookingModal({
         duration: dur || "1",
       });
       const res = await fetch(`/api/courts/search?${qs.toString()}`);
-      const json = await res.json();
+      const json: CourtsSearchResponse = await res.json();
       if (!res.ok) throw new Error(json.error || "Search failed");
 
-      const isConflict = (json.conflicting as any[]).some((c: any) => c.id === court.id);
+      const isConflict = json.conflicting.some((c) => c.id === court.id);
       setSlotStatus(isConflict ? "conflicting" : "available");
 
       const mine =
-        (json.available as any[]).find((c: any) => c.id === court.id) ??
-        (json.conflicting as any[]).find((c: any) => c.id === court.id) ??
+        json.available.find((c) => c.id === court.id) ??
+        json.conflicting.find((c) => c.id === court.id) ??
         null;
 
       if (mine) {
@@ -145,11 +158,9 @@ export default function CourtBookingModal({
         const eff = Number(mine.effective_price_per_hour ?? NaN);
         setBasePerHour(Number.isFinite(base) ? base : null);
         setEffPerHour(Number.isFinite(eff) ? eff : Number.isFinite(base) ? base : null);
-        const pct =
-          mine.active_offer && mine.active_offer.discount_pct != null
-            ? Number(mine.active_offer.discount_pct)
-            : null;
-        setDiscountPct(Number.isFinite(pct as any) ? (pct as number) : null);
+
+        const pctRaw = mine.active_offer?.discount_pct ?? null;
+        setDiscountPct(typeof pctRaw === "number" && Number.isFinite(pctRaw) ? pctRaw : null);
       } else {
         setBasePerHour(null);
         setEffPerHour(null);
@@ -208,14 +219,15 @@ export default function CourtBookingModal({
         return;
       }
 
-      const json = await res.json();
+      const json: { id: string; error?: string } = await res.json();
       if (!res.ok) throw new Error(json.error || "Booking failed");
 
       // NEW: ne zatvaramo – prikažemo gumb za pozivnice
       setCreatedBookingId(json.id);
       setMsg({ type: "ok", text: "Booked ✓ — you can invite friends now." });
-    } catch (e: any) {
-      setMsg({ type: "err", text: e.message ?? "Booking error" });
+    } catch (e: unknown) {
+      const text = e instanceof Error ? e.message : "Booking error";
+      setMsg({ type: "err", text });
     } finally {
       setLoading(false);
     }

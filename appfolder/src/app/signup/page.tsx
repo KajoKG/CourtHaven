@@ -4,6 +4,12 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
 
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (typeof e === 'string') return e
+  try { return JSON.stringify(e) } catch { return 'Signup error' }
+}
+
 export default function SignupPage() {
   const [firstName, setFirstName] = useState('')
   const [lastName,  setLastName]  = useState('')
@@ -33,8 +39,8 @@ export default function SignupPage() {
       // budući da je email verification uključen:
       setInfo('Check your email to verify your account, then log in.')
       setFirstName(''); setLastName(''); setEmail(''); setPassword('')
-    } catch (err: any) {
-      setError(err.message ?? 'Signup error')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || 'Signup error')
     } finally {
       setLoading(false)
     }
@@ -103,7 +109,7 @@ export default function SignupPage() {
         </button>
 
         <p className="text-sm text-gray-600 text-center">
-          Already have an account?{' '}
+          Already have an account{' '}
           <Link href="/login" className="text-green-600 hover:underline">Log in</Link>
         </p>
       </form>

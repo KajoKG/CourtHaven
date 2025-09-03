@@ -42,7 +42,7 @@ export async function GET() {
   (outgoing ?? []).forEach((r) => ids.add(r.addressee as string));
 
   // 3) Jednim upitom dohvati profile i napravi mapu
-  let profileMap = new Map<string, ProfileLite>();
+  const profileMap = new Map<string, ProfileLite>();
   if (ids.size > 0) {
     const { data: profs, error: pErr } = await supabase
       .from("profiles")
@@ -50,7 +50,7 @@ export async function GET() {
       .in("id", Array.from(ids));
 
     if (pErr) return NextResponse.json({ error: pErr.message }, { status: 400 });
-    (profs ?? []).forEach((p) => profileMap.set(p.id, p as ProfileLite));
+    (profs ?? []).forEach((p) => profileMap.set(p.id as string, p as ProfileLite));
   }
 
   // 4) Složi response strukture

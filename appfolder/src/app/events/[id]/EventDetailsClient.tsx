@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 
@@ -47,6 +47,16 @@ function fmtRange(startISO?: string, endISO?: string) {
   }
 }
 
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Error";
+  }
+}
+
 export default function EventDetailsClient() {
   const { id } = useParams<{ id: string }>() ?? { id: "" };
   const router = useRouter();
@@ -72,33 +82,35 @@ export default function EventDetailsClient() {
     window.setTimeout(() => setToast(null), ms);
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
       const res = await fetch(`/api/events/${id}`, { cache: "no-store" });
-      const json = await res.json();
+      const json = (await res.json().catch(() => ({}))) as Partial<DetailsResp> & { error?: string };
       if (!res.ok) throw new Error(json?.error || "Failed to load");
 
       const safe: DetailsResp = {
-        event: json.event,
+        event: json.event as EventData,
         rsvpCount: Number(json.rsvpCount ?? 0),
         teamsCount: Number(json.teamsCount ?? json.rsvpCount ?? 0),
         capacity_teams: json.capacity_teams ?? json.event?.capacity_teams ?? null,
         team_size: json.team_size ?? json.event?.team_size ?? null,
         isJoined: Boolean(json.isJoined),
-        courts: Array.isArray(json.courts) ? json.courts : [],
+        courts: Array.isArray(json.courts) ? (json.courts as Court[]) : [],
       };
       setData(safe);
-    } catch (e: any) {
-      setErr(e?.message ?? "Error");
+    } catch (e: unknown) {
+      setErr(getErrorMessage(e));
       setData(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
-  useEffect(() => { if (id) load(); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => {
+    if (id) load();
+  }, [id, load]);
 
   const teamSize = useMemo(
     () =>
@@ -144,7 +156,7 @@ export default function EventDetailsClient() {
 
     setMutating(true);
     try {
-      const body: any = {};
+      const body: Record<string, string> = {};
       if (teamSize === 2) body.partner_full_name = partner.trim();
       if (teamSize === 3) {
         body.member2_full_name = member2.trim();
@@ -157,14 +169,15 @@ export default function EventDetailsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         if (String(json?.error).includes("Not authenticated")) {
           router.push("/login");
           return;
         }
-        showToast(String(json?.error || "Join failed"));
-        setErr(String(json?.error || "Join failed"));
+        const msg = String(json?.error || "Join failed");
+        showToast(msg);
+        setErr(msg);
         return;
       }
       await load();
@@ -173,8 +186,8 @@ export default function EventDetailsClient() {
       setPartner("");
       setMember2("");
       setMember3("");
-    } catch (e: any) {
-      const msg = e?.message ?? "Error";
+    } catch (e: unknown) {
+      const msg = getErrorMessage(e);
       setErr(msg);
       showToast(msg);
     } finally {
@@ -187,16 +200,17 @@ export default function EventDetailsClient() {
     setErr(null);
     try {
       const res = await fetch(`/api/events/${id}/rsvp`, { method: "DELETE", credentials: "include" });
-      const json = await res.json();
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        showToast(String(json?.error || "Leave failed"));
-        setErr(String(json?.error || "Leave failed"));
+        const msg = String(json?.error || "Leave failed");
+        showToast(msg);
+        setErr(msg);
         return;
       }
       await load();
       showToast("Left event");
-    } catch (e: any) {
-      const msg = e?.message ?? "Error";
+    } catch (e: unknown) {
+      const msg = getErrorMessage(e);
       setErr(msg);
       showToast(msg);
     } finally {

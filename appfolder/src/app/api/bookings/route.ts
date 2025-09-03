@@ -8,6 +8,55 @@ function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
+/* ---------- Helpers & Types ---------- */
+function one<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+type OfferRow = {
+  id: string;
+  discount_pct: number | null;
+  starts_at: string;
+  ends_at: string;
+  valid_hour_start: number | null;
+  valid_hour_end: number | null;
+};
+
+type CourtInfo = {
+  name?: string | null;
+  sport?: string | null;
+  address?: string | null;
+  city?: string | null;
+  image_url?: string | null;
+};
+type CourtJoin = CourtInfo | CourtInfo[] | null;
+
+type BookingBase = {
+  id: string;
+  start_at: string;
+  end_at: string;
+  price_eur: number;
+  applied_offer_id: string | null;
+  user_id: string;
+  courts?: CourtJoin;
+};
+
+type OwnedBookingRow = BookingBase;
+
+type InvitedRow = {
+  id: string;          // invite id
+  status: 'accepted' | 'pending' | 'declined' | 'left' | string;
+  bookings: BookingBase | BookingBase[]; // inner join
+};
+
+type UnifiedBooking = BookingBase & {
+  role: 'owner' | 'guest';
+  can_cancel: boolean;
+  can_leave: boolean;
+  invite_id: string | null;
+};
+
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
 
@@ -18,7 +67,7 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  // --- NOVO: preferiramo start_at/end_at iz browsera; fallback na stari način ---
+  // --- Preferiramo start_at/end_at iz browsera; fallback na stari način ---
   let start: Date;
   let end: Date;
 
@@ -67,19 +116,20 @@ export async function POST(req: Request) {
 
   if (offErr) return NextResponse.json({ error: offErr.message }, { status: 400 });
 
+  const offers = (offs ?? []) as OfferRow[];
   const hour = start.getHours();
-  const matchedOffer = (offs ?? []).find(o => {
-    const hs = (o as any).valid_hour_start as number | null;
-    const he = (o as any).valid_hour_end as number | null;
-    const hourOk = (hs == null || he == null) ? true : (hour >= hs && hour < he);
-    return hourOk;
-  }) || null;
+  const matchedOffer: OfferRow | null =
+    offers.find((o) => {
+      const { valid_hour_start: hs, valid_hour_end: he } = o;
+      const hourOk = hs == null || he == null ? true : (hour >= hs && hour < he);
+      return hourOk;
+    }) ?? null;
 
   let effectivePerHour = basePerHour;
   let applied_offer_id: string | null = null;
   if (matchedOffer && matchedOffer.discount_pct != null) {
-    effectivePerHour = round2(basePerHour * (1 - (matchedOffer.discount_pct as number) / 100));
-    applied_offer_id = matchedOffer.id as string;
+    effectivePerHour = round2(basePerHour * (1 - matchedOffer.discount_pct / 100));
+    applied_offer_id = matchedOffer.id;
   }
 
   // trajanje u satima (izračun iz datuma)
@@ -101,7 +151,7 @@ export async function POST(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  return NextResponse.json({ ok: true, id: ins.id, price_eur, applied_offer_id });
+  return NextResponse.json({ ok: true, id: (ins as { id: string }).id, price_eur, applied_offer_id });
 }
 
 /** GET → owner + accepted guest bookinzi (budući) */
@@ -137,23 +187,26 @@ export async function GET() {
 
   if (invErr) return NextResponse.json({ error: invErr.message }, { status: 400 });
 
-  const ownerBookings = (owned ?? []).map((b) => ({
+  const ownerBookings: UnifiedBooking[] = (owned as OwnedBookingRow[] | null ?? []).map((b) => ({
     ...b,
     role: 'owner' as const,
     can_cancel: true,
     can_leave: false,
-    invite_id: null as null,
+    invite_id: null,
   }));
 
-  const guestBookings = (invited ?? []).map((r: any) => ({
-    ...r.bookings,
-    role: 'guest' as const,
-    can_cancel: false,
-    can_leave: true,
-    invite_id: r.id as string,
-  }));
+  const guestBookings: UnifiedBooking[] = (invited as InvitedRow[] | null ?? []).map((r) => {
+    const b = one<BookingBase>(r.bookings)!;
+    return {
+      ...b,
+      role: 'guest',
+      can_cancel: false,
+      can_leave: true,
+      invite_id: r.id,
+    };
+  });
 
-  const map = new Map<string, any>();
+  const map = new Map<string, UnifiedBooking>();
   [...ownerBookings, ...guestBookings].forEach(b => map.set(b.id, b));
   const merged = Array.from(map.values()).sort(
     (a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()

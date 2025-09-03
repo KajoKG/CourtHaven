@@ -8,11 +8,33 @@ const TOKEN = process.env.CONTENTFUL_ACCESS_TOKEN!;
 const ENV = process.env.CONTENTFUL_ENV || "master";
 const CT = process.env.CONTENTFUL_BLOG_CT || "blogPost";
 
-function n(v: string | null, d: number, min = 1, max = 100) {
+/* ---------- Helpers ---------- */
+function n(v: string | null, d: number, min = 1, max = 100): number {
   const x = v ? Number(v) : NaN;
   const y = Number.isFinite(x) ? x : d;
   return Math.min(max, Math.max(min, y));
 }
+
+/* ---------- Minimal Contentful types (što nam treba za mapiranje) ---------- */
+type CFEntrySys = {
+  id: string;
+  createdAt?: string;
+};
+
+type CFEntryFields = {
+  title?: string;
+  body?: unknown; // može biti string ili RichText; mi čitamo samo string
+};
+
+type CFEntry = {
+  sys?: CFEntrySys;
+  fields?: CFEntryFields;
+};
+
+type CFListResponse = {
+  items?: CFEntry[];
+  total?: number;
+};
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -42,10 +64,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: text || "Contentful error" }, { status: 500 });
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as CFListResponse;
 
   // mapiramo minimalna polja
-  const posts = (data.items || []).map((it: any) => ({
+  const posts = (data.items ?? []).map((it) => ({
     id: it.sys?.id,
     title: it.fields?.title ?? "Untitled",
     body: typeof it.fields?.body === "string" ? it.fields.body : "",

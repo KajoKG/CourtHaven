@@ -48,6 +48,22 @@ function norm(s: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+type ApiError = { error?: unknown };
+
+function isApiError(x: unknown): x is ApiError {
+  return typeof x === "object" && x !== null && "error" in x;
+}
+
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Error";
+  }
+}
+
 export default function SearchBar() {
   const [sport, setSport] = useState("");
   const [city, setCity] = useState("");
@@ -73,9 +89,17 @@ export default function SearchBar() {
       if (hour) qs.set("hour", hour);
 
       const res = await fetch(`/api/courts/search?${qs.toString()}`);
-      const json = (await res.json()) as SearchResult | { error?: string };
-      if (!res.ok) throw new Error((json as any).error || "Search failed");
+      const json: unknown = await res.json();
 
+      if (!res.ok) {
+        const msg =
+          isApiError(json) && typeof json.error === "string"
+            ? json.error
+            : "Search failed";
+        throw new Error(msg);
+      }
+
+      // Treat as SearchResult on success
       let result = json as SearchResult;
 
       const want = norm(city);
@@ -88,8 +112,8 @@ export default function SearchBar() {
       }
 
       setData(result);
-    } catch (e: any) {
-      setError(e.message ?? "Search error");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e) ?? "Search error");
       setData(null);
     } finally {
       setLoading(false);
@@ -106,7 +130,6 @@ export default function SearchBar() {
       {/* SEARCH FORM */}
       <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
         <div className="flex flex-col md:flex-row md:space-x-4 space-y-3 md:space-y-0">
-
           {/* Sport – placeholder kao disabled opcija (ne može se odabrati) */}
           <div className="flex-1">
             <select
@@ -116,7 +139,9 @@ export default function SearchBar() {
               required
               className="form-ctrl appearance-none p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="" disabled hidden>Sport</option>
+              <option value="" disabled hidden>
+                Sport
+              </option>
               <option value="padel">Padel</option>
               <option value="tennis">Tennis</option>
               <option value="basketball">Basketball</option>
@@ -137,23 +162,22 @@ export default function SearchBar() {
           </div>
 
           {/* Date (custom label jer date nema placeholder) */}
-<div className="flex-1 relative group">
-  {!date && (
-    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-white/70 group-focus-within:hidden">
-      Date
-    </span>
-  )}
-  <input
-    aria-label="Select date"
-    type="date"
-    value={date}
-    min={minDate}
-    max={maxDate}
-    onChange={(e) => setDate(e.target.value)}
-    className="form-ctrl p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-  />
-</div>
-
+          <div className="flex-1 relative group">
+            {!date && (
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-white/70 group-focus-within:hidden">
+                Date
+              </span>
+            )}
+            <input
+              aria-label="Select date"
+              type="date"
+              value={date}
+              min={minDate}
+              max={maxDate}
+              onChange={(e) => setDate(e.target.value)}
+              className="form-ctrl p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
 
           {/* Time – placeholder kao disabled opcija */}
           <div className="flex-1">
@@ -163,7 +187,9 @@ export default function SearchBar() {
               onChange={(e) => setHour(e.target.value)}
               className="form-ctrl appearance-none p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="" disabled hidden>Time</option>
+              <option value="" disabled hidden>
+                Time
+              </option>
               {hours.map((h) => (
                 <option key={h} value={h}>
                   {String(h).padStart(2, "0")}:00
@@ -243,9 +269,12 @@ function Cards({
     <div className="grid gap-4 sm:grid-cols-2">
       {courts.map((c) => {
         const base = c.price_per_hour ?? null;
-        const eff  = c.effective_price_per_hour ?? base;
+        const eff = c.effective_price_per_hour ?? base;
         const discounted = base != null && eff != null && eff < base;
-        const pct = discounted && c.active_offer?.discount_pct != null ? c.active_offer.discount_pct : null;
+        const pct =
+          discounted && c.active_offer?.discount_pct != null
+            ? c.active_offer.discount_pct
+            : null;
 
         return (
           <button
@@ -275,8 +304,12 @@ function Cards({
                   <div className="text-right">
                     {discounted ? (
                       <>
-                        <div className="text-lg font-semibold">{eff!.toFixed(2)} € / h</div>
-                        <div className="text-xs text-gray-500 line-through">{base!.toFixed(2)} € / h</div>
+                        <div className="text-lg font-semibold">
+                          {eff!.toFixed(2)} € / h
+                        </div>
+                        <div className="text-xs text-gray-500 line-through">
+                          {base!.toFixed(2)} € / h
+                        </div>
                         {pct != null && (
                           <div className="mt-0.5 inline-block rounded-full border px-2 py-0.5 text-[11px] text-green-700 dark:text-emerald-400">
                             -{pct}%
@@ -284,7 +317,9 @@ function Cards({
                         )}
                       </>
                     ) : (
-                      <div className="text-lg font-semibold">{base!.toFixed(2)} € / h</div>
+                      <div className="text-lg font-semibold">
+                        {base!.toFixed(2)} € / h
+                      </div>
                     )}
                   </div>
                 )}

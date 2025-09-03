@@ -5,31 +5,57 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 export const dynamic = "force-dynamic";
 
-// Helper: uzmi prvi element ako je array, inače vrati vrijednost
-function one<T = any>(v: any): T | null {
-  if (v == null) return null as any;
+/* ---------- Minimal joined types ---------- */
+type Court = { name?: string | null; city?: string | null };
+type Booking = {
+  id?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  courts?: Court[] | Court | null;
+};
+type InviteeProfile = {
+  id?: string | null;
+  full_name?: string | null;
+  email?: string | null;
+  avatar_url?: string | null;
+};
+type InviteStatus = "pending" | "accepted" | "declined" | "left" | string;
+type InviteJoined = {
+  id: string;
+  inviter_id?: string | null;
+  invitee_id?: string | null;
+  booking_id?: string | null;
+  status: InviteStatus;
+  bookings?: Booking[] | Booking | null;
+  invitee?: InviteeProfile[] | InviteeProfile | null;
+};
+
+/* ---------- Helpers ---------- */
+// Uzmi prvi element ako je array, inače vrati vrijednost
+function one<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null;
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
-// Helper: izvuci booking + court info iz potencijalnih array-eva
-function extractBookingCourt(inv: any) {
-  const booking = one(inv?.bookings) as any;
-  const courts = one(booking?.courts) as any;
+// Izvuci booking + court info iz potencijalnih array-eva
+function extractBookingCourt(inv: InviteJoined) {
+  const booking = one<Booking>(inv.bookings ?? null);
+  const court = one<Court>(booking?.courts ?? null);
 
   return {
-    booking_id: booking?.id ?? inv?.booking_id ?? null,
+    booking_id: booking?.id ?? inv.booking_id ?? null,
     start_at: booking?.start_at ?? null,
     end_at: booking?.end_at ?? null,
-    court_name: courts?.name ?? null,
-    city: courts?.city ?? null,
+    court_name: court?.name ?? null,
+    city: court?.city ?? null,
   };
 }
 
-// Helper: izvuci invitee profil (možda dođe kao array)
-function extractInvitee(inv: any, fallbackUserId?: string) {
-  const invitee = one(inv?.invitee) as any;
+// Izvuci invitee profil (možda dođe kao array)
+function extractInvitee(inv: InviteJoined, fallbackUserId?: string) {
+  const invitee = one<InviteeProfile>(inv.invitee ?? null);
   return {
-    invitee_id: invitee?.id ?? inv?.invitee_id ?? fallbackUserId ?? null,
+    invitee_id: invitee?.id ?? inv.invitee_id ?? fallbackUserId ?? null,
     invitee_name: invitee?.full_name ?? null,
     invitee_email: invitee?.email ?? null,
     invitee_avatar_url: invitee?.avatar_url ?? null,
@@ -49,13 +75,14 @@ export async function PATCH(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const { action } = await req.json().catch(() => ({} as any));
+  const body = await req.json().catch(() => ({}));
+  const action = (body as { action?: "accept" | "decline" }).action;
   if (action !== "accept" && action !== "decline") {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
 
   // Učitaj invite + joinane podatke radi notifikacije (mogu biti array-i)
-  const { data: inv, error: invErr } = await supabase
+  const invRes = await supabase
     .from("booking_invites")
     .select(`
       id, inviter_id, invitee_id, booking_id, status,
@@ -65,13 +92,16 @@ export async function PATCH(
     .eq("id", params.id)
     .single();
 
+  const inv = invRes.data as InviteJoined | null;
+  const invErr = invRes.error;
+
   if (invErr || !inv) return NextResponse.json({ error: "Invite not found" }, { status: 404 });
   if (inv.invitee_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (inv.status !== "pending") {
     return NextResponse.json({ error: "Invite is not pending" }, { status: 409 });
   }
 
-  const newStatus = action === "accept" ? "accepted" : "declined";
+  const newStatus: "accepted" | "declined" = action === "accept" ? "accepted" : "declined";
 
   const { error: updErr } = await supabase
     .from("booking_invites")
@@ -117,7 +147,7 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const { data: inv, error: invErr } = await supabase
+  const invRes = await supabase
     .from("booking_invites")
     .select(`
       id, inviter_id, invitee_id, booking_id, status,
@@ -126,6 +156,9 @@ export async function DELETE(
     `)
     .eq("id", params.id)
     .single();
+
+  const inv = invRes.data as InviteJoined | null;
+  const invErr = invRes.error;
 
   if (invErr || !inv) return NextResponse.json({ error: "Invite not found" }, { status: 404 });
   if (inv.invitee_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });

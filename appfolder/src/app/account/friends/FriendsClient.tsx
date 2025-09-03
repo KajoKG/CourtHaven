@@ -13,6 +13,13 @@ type Friend = { friendship_id: string; since: string; user: UserLite };
 type Incoming = { id: string; from: UserLite; created_at: string };
 type Outgoing = { id: string; to: UserLite; created_at: string };
 
+/* ---------- Helpers ---------- */
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try { return JSON.stringify(e); } catch { return "Error"; }
+}
+
 export default function FriendsClient() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [incoming, setIncoming] = useState<Incoming[]>([]);
@@ -29,19 +36,19 @@ export default function FriendsClient() {
     try {
       const res = await fetch("/api/friends", { cache: "no-store" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load");
-      setFriends(json.friends || []);
-      setIncoming(json.incoming || []);
-      setOutgoing(json.outgoing || []);
-    } catch (e: any) {
-      setErr(e.message ?? "Error");
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to load");
+      setFriends((json as { friends?: Friend[] }).friends || []);
+      setIncoming((json as { incoming?: Incoming[] }).incoming || []);
+      setOutgoing((json as { outgoing?: Outgoing[] }).outgoing || []);
+    } catch (e: unknown) {
+      setErr(getErrorMessage(e) ?? "Error");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   const sendRequest = async () => {
@@ -54,13 +61,13 @@ export default function FriendsClient() {
         body: JSON.stringify({ email }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to send");
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to send");
       setEmail("");
       setToast("Request sent");
       setTimeout(() => setToast(null), 1200);
-      load();
-    } catch (e: any) {
-      setToast(e.message ?? "Error");
+      void load();
+    } catch (e: unknown) {
+      setToast(getErrorMessage(e) ?? "Error");
       setTimeout(() => setToast(null), 1800);
     } finally {
       setBusy(false);
@@ -76,10 +83,10 @@ export default function FriendsClient() {
         body: JSON.stringify({ action }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed");
-      load();
-    } catch (e: any) {
-      setToast(e.message ?? "Error");
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed");
+      void load();
+    } catch (e: unknown) {
+      setToast(getErrorMessage(e) ?? "Error");
       setTimeout(() => setToast(null), 1800);
     } finally {
       setBusy(false);
@@ -91,10 +98,10 @@ export default function FriendsClient() {
     try {
       const res = await fetch(`/api/friends/${id}`, { method: "DELETE" });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Failed to remove");
-      load();
-    } catch (e: any) {
-      setToast(e.message ?? "Error");
+      if (!res.ok) throw new Error((json as { error?: string })?.error || "Failed to remove");
+      void load();
+    } catch (e: unknown) {
+      setToast(getErrorMessage(e) ?? "Error");
       setTimeout(() => setToast(null), 1800);
     } finally {
       setBusy(false);

@@ -22,10 +22,11 @@ export default function LoginPage() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
-      // ako postoji from → vrati tamo, inače na /settings
+      // ako postoji from → vrati tamo, inače na /
       router.push(from || '/')
-    } catch (err: any) {
-      setError(err.message ?? 'Login error')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Login error'
+      setError(msg)
     } finally {
       setLoading(false)
     }
