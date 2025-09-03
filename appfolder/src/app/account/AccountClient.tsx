@@ -20,7 +20,6 @@ type Friend   = { friendship_id: string; since: string; user: UserLite };
 type Incoming = { id: string; from: UserLite; created_at: string };
 type Outgoing = { id: string; to: UserLite; created_at: string };
 
-/** Payload koji ti backend šalje za notificiranje o inviteovima */
 type InvitePayload = {
   invitee_name?: string | null;
   invitee_email?: string | null;
