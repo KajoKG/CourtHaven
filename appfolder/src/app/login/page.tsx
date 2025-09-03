@@ -1,36 +1,36 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '../../lib/supabase'
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { supabase } from '../../lib/supabase';
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+function LoginForm() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const router = useRouter()
-  const sp = useSearchParams()
-  const reason = sp.get('reason')   // npr. "auth"
-  const from = sp.get('from')       // putanja s koje je korisnik preusmjeren
+  const router = useRouter();
+  const sp = useSearchParams();
+  const reason = sp.get('reason'); // npr. "auth"
+  const from = sp.get('from');     // putanja s koje je korisnik preusmjeren
 
   const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) throw error
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
       // ako postoji from → vrati tamo, inače na /
-      router.push(from || '/')
+      router.push(from || '/');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Login error'
-      setError(msg)
+      const msg = err instanceof Error ? err.message : 'Login error';
+      setError(msg);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <main className="flex min-h-screen flex-col items-center pt-20 bg-gray-50 p-6">
@@ -86,5 +86,13 @@ export default function LoginPage() {
         <a href="/signup" className="text-green-600 hover:underline">Sign up</a>
       </p>
     </main>
-  )
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="p-6">Loading…</main>}>
+      <LoginForm />
+    </Suspense>
+  );
 }
