@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, Suspense, ComponentType } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Court = {
@@ -30,7 +31,6 @@ type Offer = {
 
 type ApiResp = { offers: Offer[]; total: number; hasMore: boolean };
 
-// helper: nađi prvi sljedeći termin koji zadovoljava offer (satni prozor + ends_at)
 function suggestSlotForOffer(o: Offer): { date: string; hour: string } | null {
   const now = new Date();
   const end = new Date(o.ends_at);
@@ -71,17 +71,14 @@ export default function OffersPageClient() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"endsSoon" | "discount" | "price">("endsSoon");
 
-  // auth state
   const [isAuthed, setIsAuthed] = useState(false);
 
-  // booking modal
   const [bookingCourt, setBookingCourt] = useState<Court | null>(null);
   const [prefill, setPrefill] = useState<{ date: string; hour: string } | null>(null);
 
   const [offset, setOffset] = useState(0);
   const limit = 12;
 
-  // provjera prijave (lightweight)
   useEffect(() => {
     const supabase = createClientComponentClient();
     supabase.auth
@@ -119,6 +116,7 @@ export default function OffersPageClient() {
     setOffset(0);
     setOffers([]);
   }, [sport, city, q, sort]);
+
   useEffect(() => {
     load(offset === 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,8 +190,17 @@ export default function OffersPageClient() {
           <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {offers.map((o) => (
               <li key={o.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={o.court.image_url || "/images/courts/placeholder.jpg"} alt={o.court.name} className="h-44 w-full object-cover transition group-hover:scale-[1.02]" />
+                <div className="relative h-44 w-full overflow-hidden">
+                  <Image
+                    src={o.court.image_url || "/images/courts/placeholder.jpg"}
+                    alt={o.court.name}
+                    fill
+                    className="object-cover transition group-hover:scale-[1.02]"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    quality={60}
+                    priority={false}
+                  />
+                </div>
                 <div className="space-y-2 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="line-clamp-1 text-lg font-semibold">{o.court.name}</h3>

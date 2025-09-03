@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 
 type EventItem = {
   id: string;
@@ -15,7 +16,7 @@ type EventItem = {
   city: string | null;
   address: string | null;
   image_url: string | null;
-  teamsCount?: number; // 👈 novo
+  teamsCount?: number;
 };
 
 type ApiResp = { events: EventItem[]; total: number; hasMore: boolean };
@@ -24,8 +25,17 @@ function fmtRange(startISO: string, endISO?: string | null) {
   const tz = "Europe/Zagreb";
   const start = new Date(startISO);
   const end = endISO ? new Date(endISO) : null;
-  const dFmt = new Intl.DateTimeFormat("hr-HR", { timeZone: tz, day: "2-digit", month: "2-digit", year: "numeric" });
-  const tFmt = new Intl.DateTimeFormat("hr-HR", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
+  const dFmt = new Intl.DateTimeFormat("hr-HR", {
+    timeZone: tz,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const tFmt = new Intl.DateTimeFormat("hr-HR", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   if (end && start.toDateString() !== end.toDateString()) {
     return `${dFmt.format(start)} ${tFmt.format(start)} – ${dFmt.format(end)} ${tFmt.format(end)}`;
   }
@@ -50,10 +60,10 @@ export default function EventsPageClient() {
 
   // filter state (samo vrijednosti; setteri nisu potrebni dok ne dodamo UI kontrole)
   const [sport] = useState<string>("");
-  const [from]  = useState<string>("");
-  const [to]    = useState<string>("");
-  const [city]  = useState<string>("");
-  const [q]     = useState<string>("");
+  const [from] = useState<string>("");
+  const [to] = useState<string>("");
+  const [city] = useState<string>("");
+  const [q] = useState<string>("");
 
   const [offset, setOffset] = useState(0);
   const limit = 12;
@@ -94,7 +104,7 @@ export default function EventsPageClient() {
 
       if (!res.ok || !("events" in json)) {
         const msg = "error" in json && json.error ? json.error : "Failed to load events";
-        throw new Error(msg);
+        throw new Error(String(msg));
       }
 
       const data = json as ApiResp;
@@ -143,11 +153,19 @@ export default function EventsPageClient() {
                 key={ev.id}
                 className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md"
               >
-                <img
-                  src={ev.image_url || "/images/events/placeholder.jpg"}
-                  alt={ev.title}
-                  className="h-44 w-full object-cover transition group-hover:scale-[1.02]"
-                />
+                {/* Image wrapper with fixed height to prevent full-screen spill */}
+                <div className="relative h-44 w-full overflow-hidden">
+                  <Image
+                    src={ev.image_url || "/images/events/placeholder.jpg"}
+                    alt={ev.title}
+                    fill
+                    className="object-cover transition group-hover:scale-[1.02]"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    quality={60}
+                    priority={false}
+                  />
+                </div>
+
                 <div className="space-y-2 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="line-clamp-1 text-lg font-semibold">{ev.title}</h3>

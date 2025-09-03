@@ -55,20 +55,29 @@ export function Navigation() {
 
   // provjera sessiona + slušanje promjena
   useEffect(() => {
-    let mounted = true;
-    const check = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!mounted) return;
-      setSignedIn(!!session);
+    let alive = true;
+
+    const probe = async () => {
+      try {
+        const res = await fetch("/api/account/profile", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (alive) setSignedIn(res.ok);
+      } catch {
+        if (alive) setSignedIn(false);
+      }
     };
-    check();
+
+    probe();
+
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!alive) return;
       setSignedIn(!!session);
     });
+
     return () => {
-      mounted = false;
+      alive = false;
       sub.subscription.unsubscribe();
     };
   }, []);
@@ -163,26 +172,32 @@ export function Navigation() {
               />
             ))}
 
-            {/* Auth action */}
-            {signedIn ? (
-              <li className="px-2 py-2">
-                <button
-                  onClick={handleLogout}
-                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-                >
-                  Log out
-                </button>
-              </li>
-            ) : (
-              <li className="px-2 py-2">
-                <Link
-                  href="/login"
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-100 dark:hover:bg-gray-800"
-                >
-                  Login
-                </Link>
-              </li>
-            )}
+{/* Auth action */}
+{signedIn === null ? (
+  <li className="px-2 py-2">
+    {/* mali placeholder da ne bljesne 'Login' */}
+    <span className="inline-block h-9 w-20 rounded-lg bg-gray-200 animate-pulse dark:bg-gray-700" />
+  </li>
+) : signedIn ? (
+  <li className="px-2 py-2">
+    <button
+      onClick={handleLogout}
+      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+    >
+      Log out
+    </button>
+  </li>
+) : (
+  <li className="px-2 py-2">
+    <Link
+      href="/login"
+      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-100 dark:hover:bg-gray-800"
+    >
+      Login
+    </Link>
+  </li>
+)}
+
           </ul>
         </div>
 

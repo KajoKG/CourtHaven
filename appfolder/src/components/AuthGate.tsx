@@ -17,26 +17,35 @@ export default function AuthGate({ children, redirect = false, message, fallback
   const pathname = usePathname()
 
 useEffect(() => {
-  let mounted = true
+  let mounted = true;
+
   const run = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!mounted) return
-    const signed = !!session
-    setAuthed(signed)
-    if (!signed && redirect) {
-      router.replace(`/login?reason=auth&from=${encodeURIComponent(pathname)}`)
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!mounted) return;
+      const signed = !!session;
+      setAuthed(signed);
+      if (!signed && redirect) {
+        router.replace(`/login?reason=auth&from=${encodeURIComponent(pathname)}`);
+      }
+    } catch {
+      if (mounted) setAuthed(false); // fallback umjesto vječnog "Loading…"
     }
-  }
-  run()
+  };
+
+  run();
+
   const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-    if (!mounted) return
-    setAuthed(!!session)
-  })
+    if (!mounted) return;
+    setAuthed(!!session);
+  });
+
   return () => {
-    mounted = false
-    sub.subscription.unsubscribe()
-  }
-}, [redirect, router, pathname])
+    mounted = false;
+    sub.subscription.unsubscribe();
+  };
+}, [redirect, router, pathname]);
+
 
 
   if (authed === null) return <div className="py-10 text-center text-gray-500">Loading…</div>

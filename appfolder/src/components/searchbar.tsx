@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import CourtBookingModal from "./CourtBookingModal";
+import Image from "next/image";
 
 type Court = {
   id: string;
@@ -93,13 +94,12 @@ export default function SearchBar() {
 
       if (!res.ok) {
         const msg =
-          isApiError(json) && typeof json.error === "string"
-            ? json.error
+          isApiError(json) && typeof (json as ApiError).error === "string"
+            ? (json as ApiError).error
             : "Search failed";
-        throw new Error(msg);
+      throw new Error(String(msg));
       }
 
-      // Treat as SearchResult on success
       let result = json as SearchResult;
 
       const want = norm(city);
@@ -130,7 +130,7 @@ export default function SearchBar() {
       {/* SEARCH FORM */}
       <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
         <div className="flex flex-col md:flex-row md:space-x-4 space-y-3 md:space-y-0">
-          {/* Sport – placeholder kao disabled opcija (ne može se odabrati) */}
+          {/* Sport */}
           <div className="flex-1">
             <select
               aria-label="Select sport"
@@ -161,25 +161,21 @@ export default function SearchBar() {
             />
           </div>
 
-          {/* Date (custom label jer date nema placeholder) */}
-          <div className="flex-1 relative group">
-            {!date && (
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-white/70 group-focus-within:hidden">
-                Date
-              </span>
-            )}
-            <input
-              aria-label="Select date"
-              type="date"
-              value={date}
-              min={minDate}
-              max={maxDate}
-              onChange={(e) => setDate(e.target.value)}
-              className="form-ctrl p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </div>
+          {/* Date */}
+<div className="flex-1 relative">
+  <input
+    aria-label="Select date"
+    type="date"
+    value={date}
+    min={minDate}
+    max={maxDate}
+    onChange={(e) => setDate(e.target.value)}
+    className="form-ctrl p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+  />
+</div>
 
-          {/* Time – placeholder kao disabled opcija */}
+
+          {/* Time */}
           <div className="flex-1">
             <select
               aria-label="Select time"
@@ -284,12 +280,15 @@ function Cards({
             className={`text-left overflow-hidden rounded-xl border bg-white dark:bg-[color:var(--card)]
                         shadow hover:shadow-md transition ${dim ? "opacity-70" : ""}`}
           >
-            <div className="h-40 w-full overflow-hidden bg-gray-100 dark:bg-gray-800">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+            <div className="relative h-40 w-full overflow-hidden bg-gray-100 dark:bg-gray-800">
+              <Image
                 src={c.image_url || "/images/courts/placeholder.jpg"}
                 alt={c.name}
-                className="h-full w-full object-cover"
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                quality={60}
+                priority={false}
               />
             </div>
             <div className="p-4">

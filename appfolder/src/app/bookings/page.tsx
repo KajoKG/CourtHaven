@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import InviteFriends from "@/components/InviteFriends";
+import Image from "next/image";
 
 type Booking = {
   id: string;
@@ -288,12 +289,18 @@ export default function BookingsPage() {
                 <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                   {bookings.map((b) => (
                     <li key={b.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={b.courts.image_url || "/images/courts/placeholder.jpg"}
-                        alt={b.courts.name}
-                        className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
-                      />
+<div className="relative h-40 w-full overflow-hidden">
+  <Image
+    src={b.courts.image_url || "/images/courts/placeholder.jpg"}
+    alt={b.courts.name}
+    fill
+    className="object-cover transition group-hover:scale-[1.02]"
+    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+    quality={60}
+    priority={false}
+  />
+</div>
+
                       <div className="space-y-2 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -379,10 +386,11 @@ export default function BookingsPage() {
                 <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                   {events.map((ev) => (
                     <li key={ev.id} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                      <Image
                         src={ev.image_url || "/images/events/placeholder.jpg"}
                         alt={ev.title}
+                        width={1200}
+                        height={400}
                         className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
                       />
                       <div className="space-y-2 p-4">
