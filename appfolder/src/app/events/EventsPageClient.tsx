@@ -58,12 +58,12 @@ export default function EventsPageClient() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // filter state (samo vrijednosti; setteri nisu potrebni dok ne dodamo UI kontrole)
-  const [sport] = useState<string>("");
-  const [from] = useState<string>("");
-  const [to] = useState<string>("");
-  const [city] = useState<string>("");
-  const [q] = useState<string>("");
+  // ✅ Filter state (sada s UI kontrolama)
+  const [sport, setSport] = useState<string>("");
+  const [from, setFrom] = useState<string>("");
+  const [to, setTo] = useState<string>("");
+  const [city, setCity] = useState<string>("");
+  const [q, setQ] = useState<string>("");
 
   const [offset, setOffset] = useState(0);
   const limit = 12;
@@ -118,6 +118,7 @@ export default function EventsPageClient() {
     }
   };
 
+  // resetiraj offset i listu kad se filteri promijene
   useEffect(() => {
     setOffset(0);
     setEvents([]);
@@ -136,8 +137,73 @@ export default function EventsPageClient() {
           <p className="text-gray-600">Discover exciting events and activities. Join the fun!</p>
         </div>
 
-        {/* Filters ... (ostaju isti) */}
+        {/* Filters (po uzoru na Offers) */}
+        <div className="mb-8 grid grid-cols-1 gap-3 rounded-2xl border bg-white p-4 md:grid-cols-6">
+          {/* Sport */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Sport</label>
+            <select
+              value={sport}
+              onChange={(e) => setSport(e.target.value)}
+              className="w-full rounded-lg border p-2.5"
+            >
+              <option value="">All</option>
+              <option value="tennis">Tennis</option>
+              <option value="padel">Padel</option>
+              <option value="football">Football</option>
+              <option value="basketball">Basketball</option>
+              <option value="badminton">Badminton</option>
+            </select>
+          </div>
 
+          {/* From date */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">From</label>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="w-full rounded-lg border p-2.5"
+            />
+          </div>
+
+          {/* To date */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">To</label>
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-full rounded-lg border p-2.5"
+            />
+          </div>
+
+          {/* City */}
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-700">City</label>
+            <input
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Zagreb…"
+              className="w-full rounded-lg border p-2.5"
+            />
+          </div>
+
+          {/* Search */}
+          <div className="md:col-span-1">
+            <label className="mb-1 block text-xs font-medium text-gray-700">Search</label>
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Title or description…"
+              className="w-full rounded-lg border p-2.5"
+            />
+          </div>
+        </div>
+
+        {/* Count */}
         <div className="mb-4 text-sm text-gray-500">
           {total > 0 ? `${total} event${total === 1 ? "" : "s"} found` : "No results yet"}
         </div>
