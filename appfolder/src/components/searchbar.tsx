@@ -79,46 +79,50 @@ export default function SearchBar() {
   const minDate = todayISO();
   const maxDate = in14DaysISO();
 
-  const performSearch = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const qs = new URLSearchParams();
-      if (sport) qs.set("sport", sport);
-      if (city) qs.set("city", city);
-      if (date) qs.set("date", date);
-      if (hour) qs.set("hour", hour);
+const performSearch = async () => {
+  setLoading(true);
+  setError(null);
+  try {
+    const qs = new URLSearchParams();
+    if (sport) qs.set("sport", sport);
+    // Ne šaljemo ?city= jer polje služi i za ime terena
+    if (date) qs.set("date", date);
+    if (hour) qs.set("hour", hour);
 
-      const res = await fetch(`/api/courts/search?${qs.toString()}`);
-      const json: unknown = await res.json();
+    const res = await fetch(`/api/courts/search?${qs.toString()}`);
+    const json: unknown = await res.json();
 
-      if (!res.ok) {
-        const msg =
-          isApiError(json) && typeof (json as ApiError).error === "string"
-            ? (json as ApiError).error
-            : "Search failed";
+    if (!res.ok) {
+      const msg =
+        isApiError(json) && typeof (json as ApiError).error === "string"
+          ? (json as ApiError).error
+          : "Search failed";
       throw new Error(String(msg));
-      }
-
-      let result = json as SearchResult;
-
-      const want = norm(city);
-      if (want) {
-        const byCity = (c: Court) => norm(c.city) === want;
-        result = {
-          available: (result.available || []).filter(byCity),
-          conflicting: (result.conflicting || []).filter(byCity),
-        };
-      }
-
-      setData(result);
-    } catch (e: unknown) {
-      setError(getErrorMessage(e) ?? "Search error");
-      setData(null);
-    } finally {
-      setLoading(false);
     }
-  };
+
+    let result = json as SearchResult;
+
+    // Filtriraj lokalno: grad (točno, kao i prije) ILI dio imena terena
+    const q = norm(city);
+    if (q) {
+      const matches = (c: Court) =>
+        norm(c.city) === q || norm(c.name).includes(q);
+
+      result = {
+        available: (result.available || []).filter(matches),
+        conflicting: (result.conflicting || []).filter(matches),
+      };
+    }
+
+    setData(result);
+  } catch (e: unknown) {
+    setError(getErrorMessage(e) ?? "Search error");
+    setData(null);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,17 +153,18 @@ export default function SearchBar() {
             </select>
           </div>
 
-          {/* City */}
-          <div className="flex-1">
-            <input
-              aria-label="City"
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="City"
-              className="form-ctrl p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </div>
+{/* City or court name */}
+<div className="flex-1">
+  <input
+    aria-label="City or court name"
+    type="text"
+    value={city}
+    onChange={(e) => setCity(e.target.value)}
+    placeholder="City or court name"
+    className="form-ctrl p-3 w-full rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+  />
+</div>
+
 
           {/* Date */}
 <div className="flex-1 relative">
@@ -219,7 +224,7 @@ export default function SearchBar() {
             </section>
           ) : (
             <p className="text-sm text-gray-700 dark:text-gray-300">
-              No courts available. Try different date/time.
+              No courts available.
             </p>
           )}
 

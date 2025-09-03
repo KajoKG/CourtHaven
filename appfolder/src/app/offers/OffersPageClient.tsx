@@ -160,10 +160,6 @@ export default function OffersPageClient() {
             <label className="mb-1 block text-xs font-medium text-gray-700">City</label>
             <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Zagreb…" className="w-full rounded-lg border p-2.5" />
           </div>
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-700">Search</label>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Court or offer…" className="w-full rounded-lg border p-2.5" />
-          </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">Sort</label>
             <select

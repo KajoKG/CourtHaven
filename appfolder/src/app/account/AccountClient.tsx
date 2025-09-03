@@ -362,75 +362,98 @@ export default function AccountClient() {
 
         {isAuthed && !loading && profile && (
           <div className="space-y-8">
-            {/* Profile */}
-            <section className="rounded-2xl border bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold">Profile</h2>
-              <div className="flex items-start gap-6">
-                <div className="flex flex-col items-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={avatarUrl || "/images/avatar-placeholder.png"}
-                    alt="Avatar"
-                    className="h-24 w-24 rounded-full object-cover border"
-                  />
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (f) {
-                        try { await uploadAvatar(f); }
-                        catch (e) { alert(getErrorMessage(e) || "Upload error"); }
-                        finally { if (fileRef.current) fileRef.current.value = ""; }
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={() => fileRef.current?.click()}
-                    disabled={avatarBusy}
-                    className="mt-3 rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    {avatarBusy ? "Uploading…" : "Change photo"}
-                  </button>
-                </div>
+{/* Profile */}
+<section className="rounded-2xl border bg-white p-4 md:p-6 shadow-sm">
+  <h2 className="mb-3 md:mb-4 text-base md:text-lg font-semibold">Profile</h2>
 
-                <div className="flex-1 space-y-4">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-sm text-gray-600">First name</label>
-                      <input value={fn} onChange={(e) => setFn(e.target.value)} className="w-full rounded-lg border p-2.5" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-gray-600">Last name</label>
-                      <input value={ln} onChange={(e) => setLn(e.target.value)} className="w-full rounded-lg border p-2.5" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-gray-600">Display name</label>
-                    <input value={full} onChange={(e) => setFull(e.target.value)} className="w-full rounded-lg border p-2.5" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-gray-600">Bio</label>
-                    <textarea value={bio} onChange={(e) => setBio(e.target.value)} className="w-full rounded-lg border p-2.5" rows={3} />
-                  </div>
+  {/* Na mobitelu stack, na desktopu side-by-side */}
+  <div className="flex flex-col md:flex-row items-start gap-4 md:gap-6">
+    <div className="flex flex-col items-center md:items-start w-full md:w-auto">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={avatarUrl || "/images/avatar-placeholder.png"}
+        alt="Avatar"
+        className="h-24 w-24 rounded-full object-cover border"
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            try { await uploadAvatar(f); }
+            catch (e) { alert(getErrorMessage(e) || "Upload error"); }
+            finally { if (fileRef.current) fileRef.current.value = ""; }
+          }
+        }}
+      />
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={avatarBusy}
+        className="mt-3 rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-60"
+      >
+        {avatarBusy ? "Uploading…" : "Change photo"}
+      </button>
+    </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-500">
-                      Email: <span className="font-medium">{profile.email ?? "—"}</span>
-                    </div>
-                    <button
-                      onClick={save}
-                      disabled={busy}
-                      className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-                    >
-                      {busy ? "Saving…" : "Save changes"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </section>
+    <div className="flex-1 w-full space-y-3 md:space-y-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-sm text-gray-600">First name</label>
+          <input
+            value={fn}
+            onChange={(e) => setFn(e.target.value)}
+            className="w-full rounded-lg border p-2 md:p-2.5 text-sm md:text-base"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm text-gray-600">Last name</label>
+          <input
+            value={ln}
+            onChange={(e) => setLn(e.target.value)}
+            className="w-full rounded-lg border p-2 md:p-2.5 text-sm md:text-base"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm text-gray-600">Display name</label>
+        <input
+          value={full}
+          onChange={(e) => setFull(e.target.value)}
+          className="w-full rounded-lg border p-2 md:p-2.5 text-sm md:text-base"
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm text-gray-600">Bio</label>
+        <textarea
+          value={bio}
+          onChange={(e) => setBio(e.target.value)}
+          rows={3}
+          className="w-full rounded-lg border p-2 md:p-2.5 text-sm md:text-base min-h-[84px] md:min-h-[96px]"
+        />
+      </div>
+
+      {/* Na mobitelu u koloni + full-width gumb, na desktopu u jednom redu */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="text-xs md:text-sm text-gray-500 break-words">
+          Email: <span className="font-medium">{profile.email ?? "—"}</span>
+        </div>
+        <button
+          onClick={save}
+          disabled={busy}
+          className="w-full md:w-auto rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
 
             {/* Security */}
             <section className="rounded-2xl border bg-white p-6 shadow-sm">
