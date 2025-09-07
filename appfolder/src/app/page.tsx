@@ -11,7 +11,7 @@ export default function HomePage() {
   return (
     <main className="relative min-h-screen flex flex-col px-4 ">
       {/* Pozadinske slike */}
-      <div className="pointer-events-none absolute inset-0">
+      <div className="pointer-events-none absolute inset-0 -z-10">
         <img
           src="/images/BronBron.png"
           alt="Player 1"
@@ -25,7 +25,7 @@ export default function HomePage() {
       </div>
 
       {/* Theme toggle – samo na Home, ispod navigacije */}
-      <div className="relative z-10 mt-3 flex justify-end">
+      <div className="relative mt-3 flex justify-end">
         <button
           onClick={toggle}
           className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -37,7 +37,7 @@ export default function HomePage() {
       </div>
 
       {/* Hero Section */}
-      <section className="relative z-10 text-center py-16">
+      <section className="relative text-center py-16">
         <h1 className="text-4xl md:text-9xl font-bold text-green-700 dark:text-emerald-400">
           Court<span className="text-green-500 dark:text-emerald-300">Haven</span>
         </h1>
@@ -67,7 +67,7 @@ export default function HomePage() {
       </section>
 
       {/* Info cards */}
-      <section className="relative z-10 mx-auto mb-16 mt-6 grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-3">
+      <section className="relative mx-auto mb-16 mt-6 grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-3">
         <div className="rounded-2xl border bg-white p-6 shadow-sm dark:bg-[color:var(--card)] dark:border-[color:var(--border)]">
           <h3 className="mb-2 text-lg font-semibold text-green-700 dark:text-emerald-400">
             Why Choose CourtHaven
